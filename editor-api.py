@@ -9,6 +9,8 @@ from flask_cors import CORS
 from dbutils import Connection
 from waivek import read, write, rel2abs
 import os
+from datetime import datetime, timezone, timedelta
+import timeago
 
 app = Flask(__name__)
 app.config['Access-Control-Allow-Origin'] = '*'
@@ -78,6 +80,90 @@ def update_cell(table_name, column_name, row_id):
     connection.commit()
     return redirect(url_for('index'))
 
+def get_textarea_html(value):
+    return r'''
+        <textarea name="value" value="{0}">{0}</textarea>
+    '''.format(value)
+
+def cell_to_class(value):
+    if value is None:
+        return 'null'
+    value = str(value)
+    if value.endswith('.jpg') or value.endswith('.png') or value.endswith('.jpeg'):
+        return 'image'
+    if value.startswith('http://') or value.startswith('https://'):
+        return 'link'
+    if is_date_epoch(value) or is_date_iso(value):
+        return 'date'
+    if len(value) > 100:
+        return 'text-long'
+    return 'text'
+
+def cell_to_input(value):
+    if value is None:
+        return r'<input type="text" name="value" value="">'
+    value = str(value)
+    default = r'<input type="text" name="value" value="{0}">'.format(value)
+    textarea_html = get_textarea_html(value)
+    if value.endswith('.jpg') or value.endswith('.png') or value.endswith('.jpeg'):
+        image_html = r'<img src="{0}" style="max-height: 100px; max-width: 100px;" alt="{0}" title="{0}">'.format(value)
+        clickable_image_html = r'<a href="{0}" >{1}</a>'.format(value, image_html)
+        return r"""
+        <div class="tall">
+            <div>{0}</div>
+            {1}
+        </div>
+        """.format(clickable_image_html, textarea_html)
+    if value.startswith('http://') or value.startswith('https://'):
+        # return r'<a href="{0}">{0}</a>'.format(value)
+        return r"""
+        <div class="tall">
+            <div><a href="{0}">{0}</a></div>
+            <div>{1}</div>
+        </div>
+        """.format(value, textarea_html)
+    if is_date_epoch(value) or is_date_iso(value):
+        if is_date_epoch(value):
+            date = datetime.fromtimestamp(int(value), tz=timezone.utc)
+        else:
+            date = datetime.fromisoformat(value)
+        # make naive into utc
+        if date.tzinfo is None:
+            date = date.replace(tzinfo=timezone.utc)
+        html_friendly_date_string = date.strftime('%Y-%m-%dT%H:%M')
+        timeago_string = timeago.format(date, datetime.now(timezone.utc))
+        human_readable_date_string = date.strftime('%c %Z')
+        epoch_string = str(int(date.timestamp()))
+        return r"""
+        <div style="text-align: left;">
+            <div style="color: gray;">{3}</div>
+            <div>{2}</div>
+            <div>{1}</div>
+            <div><input type="datetime-local" name="value" value="{0}"></div>
+        </div>
+        """.format(html_friendly_date_string, timeago_string, human_readable_date_string, value)
+        return r'<div>{0}</div><input type="datetime-local" name="value" value="{0}">'.format(html_friendly_date_string)
+        return r'<input type="datetime-local" name="value" value="{0}">'.format(date.isoformat())
+    if len(value) > 100:
+        return textarea_html
+    return default
+
+def is_date_iso(string):
+    try:
+        datetime.fromisoformat(string)
+        return True
+    except ValueError:
+        return False
+
+def is_date_epoch(string):
+    start_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    end_date = datetime(2038, 1, 19, tzinfo=timezone.utc)
+    try:
+        date = datetime.fromtimestamp(int(string), tz=timezone.utc)
+        return start_date <= date <= end_date
+    except ValueError:
+        return False
+
 @app.route('/', methods=['GET'])
 def index():
     cursor = connection.execute("SELECT * FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
@@ -106,13 +192,85 @@ def index():
             <title>Editor API</title>
             <link rel="stylesheet" href="{{ url_for('static', filename='css/sqlite-editor.css') }}">
             <style>
+                html {
+                    --background-color: #444;
+                    --text-color: white;
+                    --border-color: #555;
+                }
                 table { color: white; }
+                main { width: auto; }
+                table { width: auto; }
+
+                /* td, th                { width: 200px; } */
+
+                td.link, td.image     { width: 200px; }
+                td.text-long          { width: 300px; }
+                td.text-long textarea { height: 150px; }
+
+                textarea                                    { height: 3rem; overflow-y: hidden; width: 100%; line-break: anywhere; }
+                textarea:focus, td.text-long textarea:focus { height: auto; field-sizing: content }
+
                 th { text-align: left; }
+                table {
+                    border-collapse: collapse;
+                }
+                th {
+                    color: #aaa;
+                }
+                td, th { 
+                    padding: 8px;
+                    border: solid 1px var(--border-color);
+                }
+                td a {
+                    word-break: break-all;
+                }
+                td input, td textarea {
+                    border-color: var(--border-color) !important;
+                    border-radius: 4px;
+                }
+                td { 
+                    text-align: center; 
+                    vertical-align: middle;
+                }
+
+                input[type="submit"] {
+                    font-family: monospace;
+                    background-color: var(--background-color);
+                    border: solid 1px var(--border-color);
+                    padding: 8px;
+                    color: white;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+                }
+                /* datepicker */
+                input[type="datetime-local"] {
+                    border: solid 1px var(--border-color);
+                    background-color: var(--background-color);
+                    border-radius: 4px;
+                    color: white;
+                    padding: 2px;
+                }
+                textarea:focus-visible {
+                    outline: none;
+                }
+
+                main {
+                    height: 100vh;
+                }
+                table {
+                    overflow-y: scroll;
+                }
+                .bottom {
+                    background: red;
+                    position: sticky;
+                }
+
             </style>
         </head>
         <body>
             <main class="font-mono">
-                <div>
+                <div class="middle">
                     {% if state['table_name'] %}
                     <h1>Active Table: {{ state['table_name'] }}</h1>
                     <form action="{{ url_for('add_column', table_name=state['table_name']) }}" method="post">
@@ -141,15 +299,19 @@ def index():
                             {% for row in rows %}
                             <tr>
                                 {% for column in columns %}
-                                <td>
-                                    {% if column.name == 'id' %}
-                                    {{ row['id'] }}
-                                    {% else %}
-                                    <form action="{{ url_for('update_cell', table_name=state['table_name'], column_name=column.name, row_id=row['id']) }}" method="post">
-                                        <input type="text" name="value" value="{{ row[column.name] }}">
-                                        <input type="submit" value="Update" hidden>
-                                    </form>
-                                    {% endif %}
+                                <td class="{{ cell_to_class(row[column.name]) }}">
+                                    <div>
+                                        {% if column.name == 'id' %}
+                                        <span style="color: gray">{{ row['id'] }}</span>
+                                        {% else %}
+                                        <form action="{{ url_for('update_cell', table_name=state['table_name'], column_name=column.name, row_id=row['id']) }}" method="post">
+
+                                            <!-- cell_to_input(row[column.name]) -->
+                                            {{ cell_to_input(row[column.name]) | safe }}
+                                            <input type="submit" value="Update" hidden>
+                                        </form>
+                                        {% endif %}
+                                    </div>
                                 {% endfor %}
                             </tr>
                             {% endfor %}
@@ -182,7 +344,7 @@ def index():
                     <h1>No active table</h1>
                     {% endif %}
                 </div>
-                <div class="wide">
+                <div class="wide bottom">
                     {% for table in tables %}
                     <div>
                         <span>{{ table.name }}</span>
@@ -203,8 +365,27 @@ def index():
 
                 </div>
             </main>
+            <script>
+
+                // textarea: Pressing ENTER should submit the form
+                document.addEventListener('keydown', function (event) {
+                    // pressing shift-enter should insert a new line
+                    if (event.target.tagName === 'TEXTAREA' && event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        event.target.form.querySelector('input[type="submit"]').click();
+                    }
+                });
+
+                // on date close, do submit
+                document.addEventListener('change', function (event) {
+                    if (event.target.type === 'datetime-local') {
+                        event.target.form.querySelector('input[type="submit"]').click();
+                    }
+                });
+
+            </script>
         </body>
-    </html>""", tables=tables, state=state, columns=columns, rows=rows, table=table)
+    </html>""", tables=tables, state=state, columns=columns, rows=rows, table=table, cell_to_input=cell_to_input, cell_to_class=cell_to_class)
 
 def main():
     create_table_state()
