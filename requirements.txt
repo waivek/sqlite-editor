@@ -1,2 +1,7 @@
 waivek
 wheel
+Flask
+flask-cors
+pysqlite3-binary
+timeago
+python-dotenv
