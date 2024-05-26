@@ -193,12 +193,16 @@ def index():
             <link rel="stylesheet" href="{{ url_for('static', filename='css/sqlite-editor.css') }}">
             <style>
                 html {
+                    --main-background-color: #333;
                     --background-color: #444;
                     --text-color: white;
                     --border-color: #555;
                 }
                 table { color: white; }
-                main { width: auto; }
+                main { 
+                    min-width: 100%;
+                    width: max-content; 
+                }
                 table { width: auto; }
 
                 /* td, th                { width: 200px; } */
@@ -207,7 +211,9 @@ def index():
                 td.text-long          { width: 300px; }
                 td.text-long textarea { height: 150px; }
 
-                textarea                                    { height: 3rem; overflow-y: hidden; width: 100%; line-break: anywhere; }
+
+                td.link, td.image { line-break: anywhere; }
+                textarea                                    { height: 3rem; overflow-y: hidden; width: 100%; }
                 textarea:focus, td.text-long textarea:focus { height: auto; field-sizing: content }
 
                 th { text-align: left; }
@@ -220,9 +226,6 @@ def index():
                 td, th { 
                     padding: 8px;
                     border: solid 1px var(--border-color);
-                }
-                td a {
-                    word-break: break-all;
                 }
                 td input, td textarea {
                     border-color: var(--border-color) !important;
@@ -256,27 +259,89 @@ def index():
                 }
 
                 main {
-                    height: 100vh;
+                    padding: 0 !important;
+                }
+                .content {
+                }
+
+                main > .content{
+                    padding: 1rem;
+                }
+                form input[type="text"] {
+                    border-color: var(--border-color);
+                }
+                thead {
+                    position: sticky;
+                    top: 0;
+                    background: var(--main-background-color);
+                }
+                .sticky {
+                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
                 }
                 table {
-                    overflow-y: scroll;
+                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+                }
+
+                body {
+                    background: red;
+                }
+
+                .content {
+                    margin-bottom: 45px;
                 }
                 .bottom {
-                    background: red;
-                    position: sticky;
+                    position: fixed;
                 }
+
+
+                .bottom {
+                    width: 100%;
+                    background: var(--main-background-color);
+                    bottom: 0;
+                    padding: 8px;
+                    margin: 0;
+                    padding-top: 8px;
+                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+                }
+                .bottom form {
+                    margin-bottom: 0 !important;
+                }
+                    
+                input.footer-input {
+                    color: gray;
+                }
+                input.active-footer-input {
+                    background: var(--main-background-color) !important;
+                    font-weight: bold;
+                }
+
+                select {
+                    font-family: monospace;
+                    background-color: var(--background-color);
+                    color: white;
+                    border: solid 1px var(--border-color);
+                    border-radius: 4px;
+                    padding: 8px;
+                }
+
+                option {
+                    background-color: var(--background-color);
+                    color: white;
+                }
+
+
+                
 
             </style>
         </head>
         <body>
             <main class="font-mono">
-                <div class="middle">
+                <div class="content">
                     {% if state['table_name'] %}
-                    <h1>Active Table: {{ state['table_name'] }}</h1>
                     <form action="{{ url_for('add_column', table_name=state['table_name']) }}" method="post">
                         <input type="text" name="name" placeholder="Column name">
                         <!-- dropdown for type: TEXT, INTEGER, REAL, BLOB -->
-                        <select name="type">
+                        <select name="type" size="1">
                             <option value="TEXT">TEXT</option>
                             <option value="INTEGER">INTEGER</option>
                             <option value="REAL">REAL</option>
@@ -346,17 +411,13 @@ def index():
                 </div>
                 <div class="wide bottom">
                     {% for table in tables %}
-                    <div>
-                        <span>{{ table.name }}</span>
-                        <div class="wide">
-                            <form action="{{ url_for('delete_table', table_name=table.name) }}" method="post">
-                                <input type="submit" value="Delete table">
-                            </form>
-                            <form action="{{ url_for('select_table', table_name=table.name) }}" method="post">
-                                <input type="submit" value="Select table">
-                            </form>
-                        </div>
-                    </div>
+                    <form action="{{ url_for('select_table', table_name=table.name) }}" method="post">
+                        {% if table.name == state['table_name'] %}
+                        <input type="submit" value="{{ table.name }}" class="active-footer-input">
+                        {% else %}
+                        <input type="submit" value="{{ table.name }}" class="footer-input">
+                        {% endif %}
+                    </form>
                     {% endfor %}
                     <form action="{{ url_for('create_table') }}" method="post">
                         <input type="text" name="name" placeholder="Table name">
@@ -380,6 +441,26 @@ def index():
                 document.addEventListener('change', function (event) {
                     if (event.target.type === 'datetime-local') {
                         event.target.form.querySelector('input[type="submit"]').click();
+                    }
+                });
+
+
+                // when the stickied thead is on top after a scroll-vertical, add a class: "sticky"
+                document.addEventListener('scroll', function (event) {
+                    var thead = document.querySelector('thead');
+                    if (thead.getBoundingClientRect().top <= 0) {
+                        thead.classList.add('sticky');
+                    } else {
+                        thead.classList.remove('sticky');
+                    }
+                });
+                content = document.querySelector('.content');
+                content.addEventListener('scroll', function (event) {
+                    var thead = document.querySelector('thead');
+                    if (thead.getBoundingClientRect().top <= 0) {
+                        thead.classList.add('sticky');
+                    } else {
+                        thead.classList.remove('sticky');
                     }
                 });
 
