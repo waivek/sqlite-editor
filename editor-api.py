@@ -199,11 +199,46 @@ def index():
                     --border-color: #555;
                 }
                 table { color: white; }
-                main { 
-                    min-width: 100%;
-                    width: max-content; 
+                body { margin: 0; padding: 0; }
+                body, .container, .content, .bottom, .scrollable-content {
+                    padding: 0;
+                    margin: 0;
+                    box-sizing: border-box;
                 }
-                table { width: auto; }
+
+                body {
+                    height: 100%;
+                }
+                .container {
+                    display: flex;
+                    flex-direction: column;
+                    height: 100vh;
+                    box-sizing: border-box; /* Ensures padding is included in the height */
+                }
+                .content {
+                    flex: 1;
+                    overflow: hidden;
+                    box-sizing: border-box; /* Ensures padding is included in the height */
+                }
+                .scrollable-content {
+                    height: 100%;
+                    overflow: hidden; /* Prevents internal scrolling */
+                    box-sizing: border-box; /* Ensures padding is included in the height */
+
+                }
+
+                .inner-scrollable-content {
+                    height: 100%;
+                    overflow-y: auto; /* Makes this content scrollable */
+                    padding: 1em;
+                    box-sizing: border-box;
+                }
+
+                .container { 
+                    background: var(--main-background-color);
+                    color: white;
+                }
+                /* table { width: auto; } */
 
                 /* td, th                { width: 200px; } */
 
@@ -258,21 +293,13 @@ def index():
                     outline: none;
                 }
 
-                main {
-                    padding: 0 !important;
-                }
-                .content {
-                }
 
-                main > .content{
-                    padding: 1rem;
-                }
                 form input[type="text"] {
                     border-color: var(--border-color);
                 }
                 thead {
                     position: sticky;
-                    top: 0;
+                    top: -1rem;
                     background: var(--main-background-color);
                 }
                 .sticky {
@@ -286,21 +313,13 @@ def index():
                     background: red;
                 }
 
-                .content {
-                    margin-bottom: 45px;
-                }
-                .bottom {
-                    position: fixed;
-                }
-
 
                 .bottom {
                     width: 100%;
                     background: var(--main-background-color);
-                    bottom: 0;
+                    /* bottom: 0; */
                     padding: 8px;
                     margin: 0;
-                    padding-top: 8px;
                     box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
                 }
                 .bottom form {
@@ -329,86 +348,117 @@ def index():
                     color: white;
                 }
 
+                /* google sheets style scrollbars */
+
+                ::-webkit-scrollbar {
+                    width: 12px;
+                    height: 12px;
+                }
+
+                ::-webkit-scrollbar-thumb {
+                    background: var(--border-color);
+                    border-radius: 6px;
+                }
+
+                ::-webkit-scrollbar-thumb:hover {
+                    background: #666;
+                }
+
+                ::-webkit-scrollbar-track {
+                    background: var(--main-background-color);
+                }
+
+                ::-webkit-scrollbar-corner {
+                    background: var(--main-background-color);
+                }
+
+                /* end google sheets style scrollbars */
+
+
 
                 
 
             </style>
         </head>
         <body>
-            <main class="font-mono">
+            <div class="container font-mono">
                 <div class="content">
-                    {% if state['table_name'] %}
-                    <form action="{{ url_for('add_column', table_name=state['table_name']) }}" method="post">
-                        <input type="text" name="name" placeholder="Column name">
-                        <!-- dropdown for type: TEXT, INTEGER, REAL, BLOB -->
-                        <select name="type" size="1">
-                            <option value="TEXT">TEXT</option>
-                            <option value="INTEGER">INTEGER</option>
-                            <option value="REAL">REAL</option>
-                            <option value="BLOB">BLOB</option>
-                        </select>
-                        <input type="submit" value="Add column">
-                    </form>
-
-                    <table>
-                        <thead>
-                            <tr>
-                                {% for column in columns %}
-                                <th>
-                                    {{ column.name }} ({{ column.type }})
-                                    </th>
-                                {% endfor %}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for row in rows %}
-                            <tr>
-                                {% for column in columns %}
-                                <td class="{{ cell_to_class(row[column.name]) }}">
-                                    <div>
-                                        {% if column.name == 'id' %}
-                                        <span style="color: gray">{{ row['id'] }}</span>
-                                        {% else %}
-                                        <form action="{{ url_for('update_cell', table_name=state['table_name'], column_name=column.name, row_id=row['id']) }}" method="post">
-
-                                            <!-- cell_to_input(row[column.name]) -->
-                                            {{ cell_to_input(row[column.name]) | safe }}
-                                            <input type="submit" value="Update" hidden>
-                                        </form>
-                                        {% endif %}
-                                    </div>
-                                {% endfor %}
-                            </tr>
-                            {% endfor %}
-                            <form action="{{ url_for('add_row', table_name=state['table_name']) }}" method="post">
-                                <tr>
-                                    <td>
-                                        ID
-                                    </td>
-                                    {% for column in columns if column.name != 'id' %}
-                                    <td>
-                                        <input type="text" name="{{ column.name }}" placeholder="{{ column.name }}">
-                                    </td>
-                                    {% endfor %}
-                                </tr>
-                                <!-- make td aligned to right -->
-                                <tr>
-                                    {% for i in range(columns.__len__()-1) %}
-                                    <td></td>
-                                    {% endfor %}
-                                    <td><input type="submit" value="Add row"></td>
-                                </tr>
+                    <div class="scrollable-content">
+                        <div class="inner-scrollable-content">
+                            {% if state['table_name'] %}
+                            <form action="{{ url_for('add_column', table_name=state['table_name']) }}" method="post">
+                                <input type="text" name="name" placeholder="Column name">
+                                <!-- dropdown for type: TEXT, INTEGER, REAL, BLOB -->
+                                <select name="type" size="1">
+                                    <option value="TEXT">TEXT</option>
+                                    <option value="INTEGER">INTEGER</option>
+                                    <option value="REAL">REAL</option>
+                                    <option value="BLOB">BLOB</option>
+                                </select>
+                                <input type="submit" value="Add column">
                             </form>
 
-                        </tbody>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        {% for column in columns %}
+                                        <th>
+                                            {{ column.name }} ({{ column.type }})
+                                            </th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in rows %}
+                                    <tr>
+                                        {% for column in columns %}
+                                        <td class="{{ cell_to_class(row[column.name]) }}">
+                                            <div>
+                                                {% if column.name == 'id' %}
+                                                <span style="color: gray">{{ row['id'] }}</span>
+                                                {% else %}
+                                                <form action="{{ url_for('update_cell', table_name=state['table_name'], column_name=column.name, row_id=row['id']) }}" method="post">
 
-                    </table>
+                                                    <!-- cell_to_input(row[column.name]) -->
+                                                    {{ cell_to_input(row[column.name]) | safe }}
+                                                    <input type="submit" value="Update" hidden>
+                                                </form>
+                                                {% endif %}
+                                            </div>
+                                        {% endfor %}
+                                    </tr>
+                                    {% endfor %}
+                                    <form action="{{ url_for('add_row', table_name=state['table_name']) }}" method="post">
+                                        <tr>
+                                            <td>
+                                                ID
+                                            </td>
+                                            {% for column in columns if column.name != 'id' %}
+                                            <td>
+                                                <input type="text" name="{{ column.name }}" placeholder="{{ column.name }}">
+                                            </td>
+                                            {% endfor %}
+                                        </tr>
+                                        <!-- make td aligned to right -->
+                                        <tr>
+                                            {% for i in range(columns.__len__()-1) %}
+                                            <td></td>
+                                            {% endfor %}
+                                            <td><input type="submit" value="Add row"></td>
+                                        </tr>
+                                    </form>
+
+                                </tbody>
+
+                            </table>
 
 
-                    {% else %}
-                    <h1>No active table</h1>
-                    {% endif %}
-                </div>
+                            {% else %}
+                            <h1>No active table</h1>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div> <!-- end div.content -->
                 <div class="wide bottom">
                     {% for table in tables %}
                     <form action="{{ url_for('select_table', table_name=table.name) }}" method="post">
@@ -425,7 +475,7 @@ def index():
                     </form>
 
                 </div>
-            </main>
+            </div>
             <script>
 
                 // textarea: Pressing ENTER should submit the form
@@ -454,10 +504,15 @@ def index():
                         thead.classList.remove('sticky');
                     }
                 });
-                content = document.querySelector('.content');
+                content = document.querySelector('.inner-scrollable-content');
                 content.addEventListener('scroll', function (event) {
                     var thead = document.querySelector('thead');
-                    if (thead.getBoundingClientRect().top <= 0) {
+
+                    // if (thead.getBoundingClientRect().top <= 0) {
+                    // if (content.scrollTop >= 1) {
+                    // check if thead is on top, by comparing to upper edge of `.scrollable-content`
+
+                    if (thead.getBoundingClientRect().top <= content.getBoundingClientRect().top) {
                         thead.classList.add('sticky');
                     } else {
                         thead.classList.remove('sticky');
