@@ -13,7 +13,6 @@ def ensure_db_dir_exists(path):
 def get_connection(path):
     import platform
     if platform.system() == "Linux":
-
         import pysqlite3 as sqlite3
         connection = sqlite3.connect(path, check_same_thread=False) # type: ignore
         connection.row_factory = sqlite3.Row                        # type: ignore
