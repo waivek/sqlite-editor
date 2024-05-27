@@ -1,0 +1,25 @@
+
+.tall { display: flex; flex-direction: column; gap: 0.5rem; }
+.wide { display: flex; flex-direction: row; gap: 0.5rem; }
+.wide { flex-wrap: wrap; }
+.box { border: solid 1px white; padding: 0.5rem; }
+.mono, .font-mono { font-family: monospace; }
+.bold, .font-bold { font-weight: bold; }
+
+body { margin: 0; padding: 0; }
+h1, h2, h3, h4, h5, h6, p, ul, li, pre { margin: 0; }
+
+main    { background: #333; color: white; }
+main    { min-height: 100vh; padding: 1rem; }
+a       { color: cyan; text-decoration: none; }
+nav a   { font-weight: bold; }
+a:hover { text-decoration: underline; }
+.gray   { color: #888; }
+
+form button[type="submit"], table button[type="submit"]{ background: #444; color: inherit; font-family: monospace; border: solid 1px white; padding: 0.25rem; }
+form input[type="text"], table input[type="text"],
+form input[type="text"], table textarea { background: #444; color: inherit; font-family: monospace; border: solid 1px white; padding: 0.25rem; }
+form input[type="text"]:active, form input[type="text"]:focus { outline-color: transparent; }
+form input[readonly] { background: #888; }
+form input[required]:invalid { border-color: red; }
+
