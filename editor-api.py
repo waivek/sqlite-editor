@@ -11,11 +11,11 @@ from waivek import read, write, rel2abs
 import os
 from datetime import datetime, timezone, timedelta
 import timeago
+import json
 
 app = Flask(__name__)
 app.config['Access-Control-Allow-Origin'] = '*'
 CORS(app)
-connection = Connection("data/main.db")
 
 @app.route('/api/tables/<table_name>/delete', methods=['POST'])
 def delete_table(table_name):
@@ -28,15 +28,26 @@ def delete_table(table_name):
 
 def create_table_state():
     state_path = rel2abs('data/state.json')
-    if not os.path.exists(state_path):
-        write({'table_name': ''}, state_path)
+    if not os.path.exists(state_path) or os.path.getsize(state_path) == 0:
+        state = {}
+        state["settings"] = { "db_path": None }
+        write(state, state_path)
+
+    db_paths = get_db_paths()
+    for db_path in db_paths:
+        if db_path not in read(state_path):
+            state = read(state_path)
+            state[db_path] = { 'table_name': None }
+            write(state, state_path)
+
     state = read(state_path)
     return state
 
 @app.route('/api/tables/<table_name>/select', methods=['POST'])
 def select_table(table_name):
+    db_path = request.form.get('db_path')
     state = create_table_state()
-    state['table_name'] = table_name
+    state[db_path]['table_name'] = table_name
     write(state, rel2abs('data/state.json'))
     return redirect(url_for('index'))
 
@@ -99,6 +110,29 @@ def cell_to_class(value):
         return 'text-long'
     return 'text'
 
+def paginate(select_clause, table_name, where_clause, order_by_clause, page_number, page_size):
+    # page_number is 1-indexed
+    offset = (page_number - 1) * page_size
+    cursor = connection.execute(f"{select_clause} FROM [{table_name}] {where_clause} {order_by_clause} LIMIT {page_size} OFFSET {offset};")
+    rows = cursor.fetchall()
+    cursor_2 = connection.execute(f"SELECT COUNT(*) FROM [{table_name}] {where_clause};")
+    row_count = cursor_2.fetchone()[0]
+    page_count = row_count // page_size
+    if row_count % page_size != 0:
+        page_count += 1
+
+    pagination = { 
+                  "page": page_number, 
+                  "page_count": page_count, 
+                  "is_first_page": page_number == 1, 
+                  "is_last_page": page_number == page_count, 
+                  "prev": page_number - 1, 
+                  "next": page_number + 1,
+                  "total": row_count
+                  }
+    return rows, pagination
+
+
 def cell_to_input(value):
     if value is None:
         return r'<input type="text" name="value" value="">'
@@ -106,7 +140,7 @@ def cell_to_input(value):
     default = r'<input type="text" name="value" value="{0}">'.format(value)
     textarea_html = get_textarea_html(value)
     if value.endswith('.jpg') or value.endswith('.png') or value.endswith('.jpeg'):
-        image_html = r'<img src="{0}" style="max-height: 100px; max-width: 100px;" alt="{0}" title="{0}">'.format(value)
+        image_html = r'<img src="{0}" class="image-success" alt="{0}" title="{0}" onerror="handle_image_error(this)">'.format(value)
         clickable_image_html = r'<a href="{0}" >{1}</a>'.format(value, image_html)
         return r"""
         <div class="tall">
@@ -126,7 +160,7 @@ def cell_to_input(value):
         if is_date_epoch(value):
             date = datetime.fromtimestamp(int(value), tz=timezone.utc)
         else:
-            date = datetime.fromisoformat(value)
+            date = parse_date_iso(value)
         # make naive into utc
         if date.tzinfo is None:
             date = date.replace(tzinfo=timezone.utc)
@@ -148,9 +182,16 @@ def cell_to_input(value):
         return textarea_html
     return default
 
+def parse_date_iso(string):
+    # handle trailing 'Z'
+    if string.endswith('Z'):
+        string = string[:-1]
+    return datetime.fromisoformat(string)
+
+
 def is_date_iso(string):
     try:
-        datetime.fromisoformat(string)
+        parse_date_iso(string)
         return True
     except ValueError:
         return False
@@ -164,27 +205,98 @@ def is_date_epoch(string):
     except ValueError:
         return False
 
+
+def get_db_paths():
+    from getdbpaths import update_db_paths_text_file
+    from waivek import readlines
+    text_file_path = update_db_paths_text_file()
+    return readlines(text_file_path)
+
+@app.route('/api/load_db', methods=['POST'])
+def load_db():
+    db_path = request.form.get('db_path')
+    state = create_table_state()
+    state['settings']['db_path'] = db_path
+    write(state, rel2abs('data/state.json'))
+    return redirect(url_for('index'))
+
+def get_autoincrementing_primary_key_or_none(table_name):
+    cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
+    columns = cursor.fetchall()
+    for column in columns:
+        if column['pk'] == 1:  # primary key
+            cursor.execute(f"SELECT * FROM sqlite_master WHERE type='table' AND name='{table_name}'")
+            table_info = cursor.fetchone()
+            if "AUTOINCREMENT" in table_info[4]:
+                return column['name']
+    return None
+
+def update_page(page):
+    db_path = request.form.get('db_path')
+    table_name = request.form.get('table_name')
+
+
 @app.route('/', methods=['GET'])
 def index():
-    cursor = connection.execute("SELECT * FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
-    tables = cursor.fetchall()
+    global connection
+
     state = create_table_state()
+
+    if state["settings"]["db_path"]:
+        connection = Connection(state["settings"]["db_path"])
+
+    db_paths = get_db_paths()
     
+    tables = []
     columns = []
     rows = []
     table = []
-    if state['table_name']:
-        cursor = connection.execute(f"PRAGMA table_info([{state['table_name']}]);")
+    settings = state["settings"]
+    db_path = settings["db_path"]
+    table_name = None
+    autoincrementing_primary_key_name = None
+    pagination = None
+    page_size = 20
+    page = 1
+
+
+    if db_path:
+        table_name = state[db_path]['table_name']
+        cursor = connection.execute("SELECT * FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+        tables = cursor.fetchall()
+        # get page_size from data/state.json. 
+        # key: state[db_path]['page_size']
+        # if not present, default to 20 and write to data/state.json
+        if db_path in state and 'page_size' in state[db_path]:
+            page_size = state[db_path]['page_size']
+        else:
+            state[db_path]['page_size'] = page_size
+            write(state, rel2abs('data/state.json'))
+        # do same for page
+        if db_path in state and 'page' in state[db_path]:
+            page = state[db_path]['page']
+        else:
+            state[db_path]['page'] = page
+            write(state, rel2abs('data/state.json'))
+
+
+    if table_name:
+        cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
         columns = cursor.fetchall()
 
-        cursor = connection.execute(f"SELECT * FROM [{state['table_name']}];")
-        rows = cursor.fetchall()
+        # check if there is an autoincrementing primary key
+        autoincrementing_primary_key_name = get_autoincrementing_primary_key_or_none(table_name)
+
+        # cursor = connection.execute(f"SELECT * FROM [{table_name}] LIMIT 20;")
+        # rows = cursor.fetchall()
+        rows, pagination = paginate("SELECT *", table_name, "", "", 1, 20)
 
         for column in columns:
             table.append({ 'value': column['name'], 'is_header': True })
         for row in rows:
             for column in columns:
                 table.append({ 'value': row[column['name']], 'is_header': False })
+
 
     return render_template_string("""
     <html>
@@ -208,6 +320,9 @@ def index():
 
                 body {
                     height: 100%;
+                }
+                table {
+                    width: max-content;
                 }
                 .container {
                     display: flex;
@@ -375,29 +490,104 @@ def index():
                 /* end google sheets style scrollbars */
 
 
+                input[type="datetime-local"], input {
+                    color-scheme: dark;
+                }
 
-                
+                .image-success {
+                    max-width: 100px;
+                    max-height: 100px;
+                }
+                .image-failed {
+                    /* line-break: auto;
+                    width: 100%;*/
+                }
+
 
             </style>
+            <script>
+                function handle_image_error(image) {
+                    image.classList.replace('image-success', 'image-failed');
+                    image.alt = 'Image errored';
+                }
+            </script>
         </head>
         <body>
             <div class="container font-mono">
                 <div class="content">
                     <div class="scrollable-content">
                         <div class="inner-scrollable-content">
-                            {% if state['table_name'] %}
-                            <form action="{{ url_for('add_column', table_name=state['table_name']) }}" method="post">
-                                <input type="text" name="name" placeholder="Column name">
-                                <!-- dropdown for type: TEXT, INTEGER, REAL, BLOB -->
-                                <select name="type" size="1">
-                                    <option value="TEXT">TEXT</option>
-                                    <option value="INTEGER">INTEGER</option>
-                                    <option value="REAL">REAL</option>
-                                    <option value="BLOB">BLOB</option>
-                                </select>
-                                <input type="submit" value="Add column">
-                            </form>
+                            <div class="wide">
+                                {% if active_table_name %}
+                                <form action="{{ url_for('add_column', table_name=active_table_name) }}" method="post">
+                                    <input type="text" name="name" placeholder="Column name">
+                                    <!-- dropdown for type: TEXT, INTEGER, REAL, BLOB -->
+                                    <select name="type" size="1">
+                                        <option value="TEXT">TEXT</option>
+                                        <option value="INTEGER">INTEGER</option>
+                                        <option value="REAL">REAL</option>
+                                        <option value="BLOB">BLOB</option>
+                                    </select>
+                                    <input type="submit" value="Add column">
+                                </form>
+                                {% endif %}
+                                <form action="{{ url_for('load_db') }}" method="post">
+                                    <select name="db_path" size="1">
+                                        {% for db_path in db_paths %}
+                                        {% if db_path == active_db_path %}
+                                        <option value="{{ db_path }}" selected>{{ db_path }}</option>
+                                        {% else %}
+                                        <option value="{{ db_path }}">{{ db_path }}</option>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                    <input type="submit" value="Load DB">
+                                </form>
+                            </div>
+                            {% if active_table_name %}
+                            <!-- pagination -->
+                            <div class="wide">
+                                <span>Total: {{ pagination["total"] }}</span>
+                                {% if pagination["is_first_page"] %}
+                                <span>First</span>
+                                {% else %}
+                                <form action="{{ url_for('index') }}" method="post">
+                                    <input type="hidden" name="page" value="0">
+                                    <input type="submit" value="First">
+                                </form>
+                                {% endif %}
+                                {% if pagination["prev"] >= 0 %}
+                                <form action="{{ url_for('index') }}" method="post">
+                                    <input type="hidden" name="page" value="{{ pagination['prev'] }}">
+                                    <input type="submit" value="Prev">
+                                </form>
+                                {% else %}
+                                <span>Prev</span>
+                                {% endif %}
+                                <span>Page {{ pagination["page"] }} of {{ pagination["page_count"] }}</span>
+                                {% if not pagination["is_last_page"] %}
+                                <form action="{{ url_for('index') }}" method="post">
+                                    <input type="hidden" name="page" value="{{ pagination['next'] }}">
+                                    <input type="submit" value="Next">
+                                </form>
+                                {% else %}
+                                <span>Next</span>
+                                {% endif %}
+                                {% if not pagination["is_last_page"] %}
+                                <form action="{{ url_for('index') }}" method="post">
+                                    <input type="hidden" name="page" value="{{ pagination['page_count'] }}">
+                                    <input type="submit" value="Last">
+                                </form>
+                                {% else %}
+                                <span>Last</span>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                                
 
+
+
+                            {% if active_db_path and active_table_name %}
                             <table>
                                 <thead>
                                     <tr>
@@ -414,10 +604,10 @@ def index():
                                         {% for column in columns %}
                                         <td class="{{ cell_to_class(row[column.name]) }}">
                                             <div>
-                                                {% if column.name == 'id' %}
+                                                {% if autoincrementing_primary_key_name and column.name == autoincrementing_primary_key_name %}
                                                 <span style="color: gray">{{ row['id'] }}</span>
                                                 {% else %}
-                                                <form action="{{ url_for('update_cell', table_name=state['table_name'], column_name=column.name, row_id=row['id']) }}" method="post">
+                                                <form action="{{ url_for('update_cell', table_name=active_table_name, column_name=column.name, row_id=row['id']) }}" method="post">
 
                                                     <!-- cell_to_input(row[column.name]) -->
                                                     {{ cell_to_input(row[column.name]) | safe }}
@@ -428,7 +618,7 @@ def index():
                                         {% endfor %}
                                     </tr>
                                     {% endfor %}
-                                    <form action="{{ url_for('add_row', table_name=state['table_name']) }}" method="post">
+                                    <form action="{{ url_for('add_row', table_name=active_table_name) }}" method="post">
                                         <tr>
                                             <td>
                                                 ID
@@ -451,10 +641,6 @@ def index():
                                 </tbody>
 
                             </table>
-
-
-                            {% else %}
-                            <h1>No active table</h1>
                             {% endif %}
                         </div>
                     </div>
@@ -462,11 +648,13 @@ def index():
                 <div class="wide bottom">
                     {% for table in tables %}
                     <form action="{{ url_for('select_table', table_name=table.name) }}" method="post">
-                        {% if table.name == state['table_name'] %}
+                        {% if table.name == active_table_name %}
                         <input type="submit" value="{{ table.name }}" class="active-footer-input">
                         {% else %}
                         <input type="submit" value="{{ table.name }}" class="footer-input">
                         {% endif %}
+                        <!-- hidden payload containing db_path -->
+                        <input type="hidden" name="db_path" value="{{ active_db_path }}">
                     </form>
                     {% endfor %}
                     <form action="{{ url_for('create_table') }}" method="post">
@@ -477,6 +665,7 @@ def index():
                 </div>
             </div>
             <script>
+                console.log("hello from editor-api.py");
 
                 // textarea: Pressing ENTER should submit the form
                 document.addEventListener('keydown', function (event) {
@@ -519,9 +708,15 @@ def index():
                     }
                 });
 
+
             </script>
         </body>
-    </html>""", tables=tables, state=state, columns=columns, rows=rows, table=table, cell_to_input=cell_to_input, cell_to_class=cell_to_class)
+    </html>""", tables=tables, state=state, columns=columns, rows=rows, table=table, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_paths=db_paths, json=json, active_db_path=db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination)
+
+state = create_table_state()
+settings = state["settings"]
+db_path = settings["db_path"]
+connection = Connection(":memory:")
 
 def main():
     create_table_state()
