@@ -27,6 +27,7 @@ def delete_table(table_name):
     return redirect(url_for('index'))
 
 def create_table_state():
+
     state_path = rel2abs('data/state.json')
     if not os.path.exists(state_path) or os.path.getsize(state_path) == 0:
         state = {}
@@ -72,7 +73,6 @@ def add_column(table_name):
 def add_row(table_name):
     # form_json = request.form.to_dict()
     # return form_json
-    state = create_table_state()
     columns = []
     cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
     for column in cursor.fetchall():
