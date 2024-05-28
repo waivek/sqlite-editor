@@ -35,7 +35,7 @@ def get_db_paths(start_directory, max_depth=10, ignore_hidden_files=True, ignore
     return get_files(start_directory, max_depth, ignore_hidden=ignore_hidden_files, ignore_vcs=ignore_vcs_files, extensions=file_extensions)
 
 def update_db_paths_text_file():
-    output_path = rel2abs("db_paths.txt")
+    output_path = rel2abs("data/db_paths.txt")
     # if modified in the last hour, don't update
     if os.path.exists(output_path):
         last_modified = os.path.getmtime(output_path)
