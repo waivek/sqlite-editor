@@ -5,3 +5,6 @@ flask-cors
 pysqlite3-binary
 timeago
 python-dotenv
+
+dataclasses-json
+jsonpickle
