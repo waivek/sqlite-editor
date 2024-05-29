@@ -3,6 +3,7 @@ from flask import request
 from flask import render_template_string
 from flask import render_template
 from flask import Flask
+from flask import Request
 from flask import redirect
 from flask import url_for
 from flask_cors import CORS
@@ -12,6 +13,8 @@ import os
 from datetime import datetime, timezone, timedelta
 import timeago
 import json
+from state import get_state
+from flask import session
 
 app = Flask(__name__)
 app.config['Access-Control-Allow-Origin'] = '*'
@@ -20,36 +23,25 @@ CORS(app)
 @app.route('/api/tables/<table_name>/delete', methods=['POST'])
 def delete_table(table_name):
     connection.execute(f"DROP TABLE [{table_name}];")
-    state = create_table_state()
-    if state['table_name'] == table_name:
-        state['table_name'] = ''
-        write(state, rel2abs('data/state.json'))
+    state = request_to_state(request)
+    state._refresh_table_configs_of_active_db_config()
     return redirect(url_for('index'))
 
-def create_table_state():
+def request_to_state(request: Request):
+    # user_id = int(request.cookies['id'])
+    user_id = int(session['id'])
+    return get_state(user_id)
 
-    state_path = rel2abs('data/state.json')
-    if not os.path.exists(state_path) or os.path.getsize(state_path) == 0:
-        state = {}
-        state["settings"] = { "db_path": None }
-        write(state, state_path)
-
-    db_paths = get_db_paths()
-    for db_path in db_paths:
-        if db_path not in read(state_path):
-            state = read(state_path)
-            state[db_path] = { 'table_name': None }
-            write(state, state_path)
-
-    state = read(state_path)
-    return state
+def request_to_connection(request: Request):
+    state = request_to_state(request)
+    return Connection(state.active_db_path)
 
 @app.route('/api/tables/<table_name>/select', methods=['POST'])
 def select_table(table_name):
+    # get id by request cookie
     db_path = request.form.get('db_path')
-    state = create_table_state()
-    state[db_path]['table_name'] = table_name
-    write(state, rel2abs('data/state.json'))
+    state = request_to_state(request)
+    state.set_active_table(table_name)
     return redirect(url_for('index'))
 
 @app.route('/api/tables', methods=['POST'])
@@ -73,15 +65,29 @@ def add_column(table_name):
 def add_row(table_name):
     # form_json = request.form.to_dict()
     # return form_json
+    connection = request_to_connection(request)
+
     columns = []
+    cursor = connection.execute("SELECT * FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+    tables = cursor.fetchall()
+
     cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
-    for column in cursor.fetchall():
+    pragma_rows = cursor.fetchall()
+    for column in pragma_rows:
         columns.append(column['name'])
     values = []
     for column in columns:
         values.append(request.form.get(column))
-    connection.execute(f"INSERT INTO [{table_name}] ({', '.join(columns)}) VALUES ({', '.join(['?' for _ in columns])});", values)
+    escaped_columns = [ f"[{column}]" for column in columns ]
+
+    query = f"INSERT INTO [{table_name}] ({', '.join(escaped_columns)}) VALUES ({', '.join(['?' for _ in columns])});"
+
+    try:
+        connection.execute(query, values)
+    except:
+        return { "error": "Failed to insert row", "query": query, "values": values }
     connection.commit()
+    # return { "success": "Inserted row", "query": query, "values": values }
     return redirect(url_for('index'))
 
 @app.route('/api/tables/<table_name>/columns/<column_name>/rows/<row_id>', methods=['POST'])
@@ -214,10 +220,9 @@ def get_db_paths():
 
 @app.route('/api/load_db', methods=['POST'])
 def load_db():
-    db_path = request.form.get('db_path')
-    state = create_table_state()
-    state['settings']['db_path'] = db_path
-    write(state, rel2abs('data/state.json'))
+    db_path = request.form['db_path']
+    state = request_to_state(request)
+    state.set_active_db_path(db_path)
     return redirect(url_for('index'))
 
 def get_autoincrementing_primary_key_or_none(table_name):
@@ -235,289 +240,72 @@ def update_page(page):
     db_path = request.form.get('db_path')
     table_name = request.form.get('table_name')
 
+@app.route("/api/page/<page_number>", methods=['POST'])
+def page(page_number):
+    state = request_to_state(request)
+    state.set_page(page_number)
+    return redirect(url_for('index'))
 
 @app.route('/', methods=['GET'])
 def index():
+    if 'id' not in session:
+        session['id'] = 1
+        return redirect(url_for('index'))
+
     global connection
 
-    state = create_table_state()
+    state = request_to_state(request)
 
-    if state["settings"]["db_path"]:
-        connection = Connection(state["settings"]["db_path"])
+    if state.active_db_path:
+        connection = Connection(state.active_db_path)
 
     db_paths = get_db_paths()
     
     tables = []
     columns = []
     rows = []
-    table = []
-    settings = state["settings"]
-    db_path = settings["db_path"]
     table_name = None
     autoincrementing_primary_key_name = None
     pagination = None
-    page_size = 20
-    page = 1
+    table_config = None
 
-
-    if db_path:
-        table_name = state[db_path]['table_name']
+    if state.active_db_path:
         cursor = connection.execute("SELECT * FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
         tables = cursor.fetchall()
-        # get page_size from data/state.json. 
-        # key: state[db_path]['page_size']
-        # if not present, default to 20 and write to data/state.json
-        if db_path in state and 'page_size' in state[db_path]:
-            page_size = state[db_path]['page_size']
-        else:
-            state[db_path]['page_size'] = page_size
-            write(state, rel2abs('data/state.json'))
-        # do same for page
-        if db_path in state and 'page' in state[db_path]:
-            page = state[db_path]['page']
-        else:
-            state[db_path]['page'] = page
-            write(state, rel2abs('data/state.json'))
+        table_config = state.get_active_table_config()
 
+    if table_config:
 
-    if table_name:
+        table_name = table_config.name
         cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
         columns = cursor.fetchall()
 
-        # check if there is an autoincrementing primary key
         autoincrementing_primary_key_name = get_autoincrementing_primary_key_or_none(table_name)
 
-        # cursor = connection.execute(f"SELECT * FROM [{table_name}] LIMIT 20;")
-        # rows = cursor.fetchall()
-        rows, pagination = paginate("SELECT *", table_name, "", "", 1, 20)
-
-        for column in columns:
-            table.append({ 'value': column['name'], 'is_header': True })
-        for row in rows:
-            for column in columns:
-                table.append({ 'value': row[column['name']], 'is_header': False })
-
+        rows, pagination = paginate("SELECT *", table_name, "", "", table_config.page, table_config.page_size)
 
     return render_template_string("""
     <html>
         <head>
             <title>Editor API</title>
             <link rel="stylesheet" href="{{ url_for('static', filename='css/sqlite-editor.css') }}">
-            <style>
-                html {
-                    --main-background-color: #333;
-                    --background-color: #444;
-                    --text-color: white;
-                    --border-color: #555;
-                }
-                table { color: white; }
-                body { margin: 0; padding: 0; }
-                body, .container, .content, .bottom, .scrollable-content {
-                    padding: 0;
-                    margin: 0;
-                    box-sizing: border-box;
-                }
-
-                body {
-                    height: 100%;
-                }
-                table {
-                    width: max-content;
-                }
-                .container {
-                    display: flex;
-                    flex-direction: column;
-                    height: 100vh;
-                    box-sizing: border-box; /* Ensures padding is included in the height */
-                }
-                .content {
-                    flex: 1;
-                    overflow: hidden;
-                    box-sizing: border-box; /* Ensures padding is included in the height */
-                }
-                .scrollable-content {
-                    height: 100%;
-                    overflow: hidden; /* Prevents internal scrolling */
-                    box-sizing: border-box; /* Ensures padding is included in the height */
-
-                }
-
-                .inner-scrollable-content {
-                    height: 100%;
-                    overflow-y: auto; /* Makes this content scrollable */
-                    padding: 1em;
-                    box-sizing: border-box;
-                }
-
-                .container { 
-                    background: var(--main-background-color);
-                    color: white;
-                }
-                /* table { width: auto; } */
-
-                /* td, th                { width: 200px; } */
-
-                td.link, td.image     { width: 200px; }
-                td.text-long          { width: 300px; }
-                td.text-long textarea { height: 150px; }
-
-
-                td.link, td.image { line-break: anywhere; }
-                textarea                                    { height: 3rem; overflow-y: hidden; width: 100%; }
-                textarea:focus, td.text-long textarea:focus { height: auto; field-sizing: content }
-
-                th { text-align: left; }
-                table {
-                    border-collapse: collapse;
-                }
-                th {
-                    color: #aaa;
-                }
-                td, th { 
-                    padding: 8px;
-                    border: solid 1px var(--border-color);
-                }
-                td input, td textarea {
-                    border-color: var(--border-color) !important;
-                    border-radius: 4px;
-                }
-                td { 
-                    text-align: center; 
-                    vertical-align: middle;
-                }
-
-                input[type="submit"] {
-                    font-family: monospace;
-                    background-color: var(--background-color);
-                    border: solid 1px var(--border-color);
-                    padding: 8px;
-                    color: white;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-                }
-                /* datepicker */
-                input[type="datetime-local"] {
-                    border: solid 1px var(--border-color);
-                    background-color: var(--background-color);
-                    border-radius: 4px;
-                    color: white;
-                    padding: 2px;
-                }
-                textarea:focus-visible {
-                    outline: none;
-                }
-
-
-                form input[type="text"] {
-                    border-color: var(--border-color);
-                }
-                thead {
-                    position: sticky;
-                    top: -1rem;
-                    background: var(--main-background-color);
-                }
-                .sticky {
-                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-                }
-                table {
-                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-                }
-
-                body {
-                    background: red;
-                }
-
-
-                .bottom {
-                    width: 100%;
-                    background: var(--main-background-color);
-                    /* bottom: 0; */
-                    padding: 8px;
-                    margin: 0;
-                    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
-                }
-                .bottom form {
-                    margin-bottom: 0 !important;
-                }
-                    
-                input.footer-input {
-                    color: gray;
-                }
-                input.active-footer-input {
-                    background: var(--main-background-color) !important;
-                    font-weight: bold;
-                }
-
-                select {
-                    font-family: monospace;
-                    background-color: var(--background-color);
-                    color: white;
-                    border: solid 1px var(--border-color);
-                    border-radius: 4px;
-                    padding: 8px;
-                }
-
-                option {
-                    background-color: var(--background-color);
-                    color: white;
-                }
-
-                /* google sheets style scrollbars */
-
-                ::-webkit-scrollbar {
-                    width: 12px;
-                    height: 12px;
-                }
-
-                ::-webkit-scrollbar-thumb {
-                    background: var(--border-color);
-                    border-radius: 6px;
-                }
-
-                ::-webkit-scrollbar-thumb:hover {
-                    background: #666;
-                }
-
-                ::-webkit-scrollbar-track {
-                    background: var(--main-background-color);
-                }
-
-                ::-webkit-scrollbar-corner {
-                    background: var(--main-background-color);
-                }
-
-                /* end google sheets style scrollbars */
-
-
-                input[type="datetime-local"], input {
-                    color-scheme: dark;
-                }
-
-                .image-success {
-                    max-width: 100px;
-                    max-height: 100px;
-                }
-                .image-failed {
-                    /* line-break: auto;
-                    width: 100%;*/
-                }
-
-
-            </style>
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
             <script>
                 function handle_image_error(image) {
                     image.classList.replace('image-success', 'image-failed');
                     image.alt = 'Image errored';
                 }
             </script>
+            <style>
+            .justify-between { justify-content: space-between; }
+            </style>
         </head>
         <body>
             <div class="container font-mono">
                 <div class="content">
                     <div class="scrollable-content">
-                        <div class="inner-scrollable-content">
-                            <div class="wide">
+                        <div class="inner-scrollable-content tall">
+                            <div class="wide justify-between">
                                 {% if active_table_name %}
                                 <form action="{{ url_for('add_column', table_name=active_table_name) }}" method="post">
                                     <input type="text" name="name" placeholder="Column name">
@@ -546,19 +334,17 @@ def index():
                             </div>
                             {% if active_table_name %}
                             <!-- pagination -->
-                            <div class="wide">
+                            <div class="wide center-h">
                                 <span>Total: {{ pagination["total"] }}</span>
                                 {% if pagination["is_first_page"] %}
                                 <span>First</span>
                                 {% else %}
-                                <form action="{{ url_for('index') }}" method="post">
-                                    <input type="hidden" name="page" value="0">
+                                <form action="{{ url_for('page', page_number=1) }}" method="post">
                                     <input type="submit" value="First">
                                 </form>
                                 {% endif %}
-                                {% if pagination["prev"] >= 0 %}
-                                <form action="{{ url_for('index') }}" method="post">
-                                    <input type="hidden" name="page" value="{{ pagination['prev'] }}">
+                                {% if not pagination["is_first_page"] %}
+                                <form action="{{ url_for('page', page_number=pagination['prev']) }}" method="post">
                                     <input type="submit" value="Prev">
                                 </form>
                                 {% else %}
@@ -566,16 +352,14 @@ def index():
                                 {% endif %}
                                 <span>Page {{ pagination["page"] }} of {{ pagination["page_count"] }}</span>
                                 {% if not pagination["is_last_page"] %}
-                                <form action="{{ url_for('index') }}" method="post">
-                                    <input type="hidden" name="page" value="{{ pagination['next'] }}">
+                                <form action="{{ url_for('page', page_number=pagination['next']) }}" method="post">
                                     <input type="submit" value="Next">
                                 </form>
                                 {% else %}
                                 <span>Next</span>
                                 {% endif %}
                                 {% if not pagination["is_last_page"] %}
-                                <form action="{{ url_for('index') }}" method="post">
-                                    <input type="hidden" name="page" value="{{ pagination['page_count'] }}">
+                                <form action="{{ url_for('page', page_number=pagination['page_count']) }}" method="post">
                                     <input type="submit" value="Last">
                                 </form>
                                 {% else %}
@@ -711,15 +495,14 @@ def index():
 
             </script>
         </body>
-    </html>""", tables=tables, state=state, columns=columns, rows=rows, table=table, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_paths=db_paths, json=json, active_db_path=db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination)
+    </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_paths=db_paths, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination)
 
-state = create_table_state()
-settings = state["settings"]
-db_path = settings["db_path"]
-connection = Connection(":memory:")
+import sqlite3
+connection : sqlite3.Connection
 
 def main():
-    create_table_state()
+    secret_key = 'secret'
+    app.secret_key = secret_key
     app.run(host='0.0.0.0', port=8000, debug=True, use_reloader=True)
 
 if __name__ == "__main__":

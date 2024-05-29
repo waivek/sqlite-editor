@@ -60,16 +60,20 @@ class State:
             return None
         return next(db_config for db_config in self.db_configs if db_config.path == self.active_db_path)
 
-    def _refresh_table_configs(self):
+    def _refresh_table_configs_of_active_db_config(self):
         db_config = self._get_active_db_config()
         assert db_config
         connection = Connection(db_config.path)
         cursor = connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
         table_names = [table_name[0] for table_name in cursor.fetchall()]
-        for table_name in table_names:
-            if table_name not in [table_config.name for table_config in db_config.table_configs]:
-                table_config = TableConfig(db_config.path, table_name)
-                db_config.table_configs.append(table_config)
+        set_1 = set([table_config.name for table_config in db_config.table_configs])
+        set_2 = set(table_names)
+        table_names_to_add = set_2 - set_1
+        table_names_to_remove = set_1 - set_2
+        for table_name in table_names_to_add:
+            db_config.table_configs.append(TableConfig(db_config.path, table_name))
+        for table_name in table_names_to_remove:
+            db_config.table_configs = [table_config for table_config in db_config.table_configs if table_config.name != table_name]
 
     def __str__(self):
         return json.dumps(self, default=vars, indent=4)
@@ -80,7 +84,7 @@ class State:
             raise Exception(f"Invalid db_path: {db_path}")
 
         self.active_db_path = db_path
-        self._refresh_table_configs()
+        self._refresh_table_configs_of_active_db_config()
         save_state(self)
         # self._save()
 
@@ -88,18 +92,29 @@ class State:
         db_config = self._get_active_db_config()
         if not db_config:
             raise Exception("No active db_config")
-        self._refresh_table_configs()
+        self._refresh_table_configs_of_active_db_config()
         if table_name not in [table_config.name for table_config in db_config.table_configs]:
             raise Exception(f"Invalid table_name: {table_name}")
         db_config.active_table_name = table_name
         save_state(self)
         # self._save()
+
+    def set_page(self, page_number):
+        page_number = int(page_number)
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.update_page(page_number)
+        save_state(self)
     
     def get_active_table_config(self):
         db_config = self._get_active_db_config()
         if not db_config:
             raise Exception("No active db_config")
-        return next(table_config for table_config in db_config.table_configs if table_config.name == db_config.active_table_name)
+        for table_config in db_config.table_configs:
+            if table_config.name == db_config.active_table_name:
+                return table_config
+        return None
 
     def print_tree(self):
         active_db_config_path = self.active_db_path

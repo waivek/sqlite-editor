@@ -1,0 +1,204 @@
+
+html {
+    --main-background-color: #333;
+    --background-color: #444;
+    --text-color: white;
+    --border-color: #555;
+}
+table { color: white; }
+body { margin: 0; padding: 0; }
+body, .container, .content, .bottom, .scrollable-content {
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+}
+
+body {
+    height: 100%;
+}
+table {
+    width: max-content;
+}
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    box-sizing: border-box; /* Ensures padding is included in the height */
+}
+.content {
+    flex: 1;
+    overflow: hidden;
+    box-sizing: border-box; /* Ensures padding is included in the height */
+}
+.scrollable-content {
+    height: 100%;
+    overflow: hidden; /* Prevents internal scrolling */
+    box-sizing: border-box; /* Ensures padding is included in the height */
+
+}
+
+.inner-scrollable-content {
+    height: 100%;
+    overflow-y: auto; /* Makes this content scrollable */
+    padding: 1em;
+    box-sizing: border-box;
+}
+
+.container { 
+    background: var(--main-background-color);
+    color: white;
+}
+/* table { width: auto; } */
+
+/* td, th                { width: 200px; } */
+
+td.link, td.image     { width: 200px; }
+td.text-long          { width: 300px; }
+td.text-long textarea { height: 150px; }
+
+
+td.link, td.image { line-break: anywhere; }
+textarea                                    { height: 3rem; overflow-y: hidden; width: 100%; }
+textarea:focus, td.text-long textarea:focus { height: auto; field-sizing: content }
+
+th { text-align: left; }
+table {
+    border-collapse: collapse;
+}
+th {
+    color: #aaa;
+}
+td, th { 
+    padding: 8px;
+    border: solid 1px var(--border-color);
+}
+td input, td textarea {
+    border-color: var(--border-color) !important;
+    border-radius: 4px;
+}
+td { 
+    text-align: center; 
+    vertical-align: middle;
+}
+
+input[type="submit"] {
+    font-family: monospace;
+    background-color: var(--background-color);
+    border: solid 1px var(--border-color);
+    padding: 8px;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+/* datepicker */
+input[type="datetime-local"] {
+    border: solid 1px var(--border-color);
+    background-color: var(--background-color);
+    border-radius: 4px;
+    color: white;
+    padding: 2px;
+}
+textarea:focus-visible {
+    outline: none;
+}
+
+
+form input[type="text"] {
+    border-color: var(--border-color);
+}
+thead {
+    position: sticky;
+    top: -1rem;
+    background: var(--main-background-color);
+}
+.sticky {
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+table {
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+body {
+    background: red;
+}
+
+
+.bottom {
+    width: 100%;
+    background: var(--main-background-color);
+    /* bottom: 0; */
+    padding: 8px;
+    margin: 0;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+.bottom form {
+    margin-bottom: 0 !important;
+}
+    
+input.footer-input {
+    color: gray;
+}
+input.active-footer-input {
+    background: var(--main-background-color) !important;
+    font-weight: bold;
+}
+
+select {
+    font-family: monospace;
+    background-color: var(--background-color);
+    color: white;
+    border: solid 1px var(--border-color);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+option {
+    background-color: var(--background-color);
+    color: white;
+}
+
+/* google sheets style scrollbars */
+
+::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--main-background-color);
+}
+
+::-webkit-scrollbar-corner {
+    background: var(--main-background-color);
+}
+
+/* end google sheets style scrollbars */
+
+
+input[type="datetime-local"], input {
+    color-scheme: dark;
+}
+
+.image-success {
+    max-width: 100px;
+    max-height: 100px;
+}
+.image-failed {
+    /* line-break: auto;
+    width: 100%;*/
+}
+
+form { margin: 0; }
+.center-h { align-items: center; }
+
+
