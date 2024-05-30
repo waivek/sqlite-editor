@@ -52,6 +52,7 @@ class State:
         text_file_path = update_db_paths_text_file()
         db_paths = readlines(text_file_path)
         db_paths.sort(key=lambda db_path: os.path.getmtime(db_path), reverse=True)
+
         for db_path in db_paths:
             self.db_configs.append(DatabaseConfig(db_path))
 

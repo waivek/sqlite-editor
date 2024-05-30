@@ -34,6 +34,8 @@ def request_to_state(request: Request):
 
 def request_to_connection(request: Request):
     state = request_to_state(request)
+    if not state.active_db_path:
+        raise Exception("No active db path")
     return Connection(state.active_db_path)
 
 @app.route('/api/tables/<table_name>/select', methods=['POST'])
