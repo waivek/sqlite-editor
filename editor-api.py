@@ -104,6 +104,7 @@ def get_textarea_html(value):
         <textarea name="value" value="{0}">{0}</textarea>
     '''.format(value)
 
+
 def cell_to_class(value):
     if value is None:
         return 'null'
@@ -207,7 +208,11 @@ def is_date_iso(string):
 def is_date_epoch(string):
     start_date = datetime(2000, 1, 1, tzinfo=timezone.utc)
     end_date = datetime(2038, 1, 19, tzinfo=timezone.utc)
+    start_date_epoch = start_date.timestamp()
+    end_date_epoch = end_date.timestamp()
     try:
+        if int(string) > end_date_epoch or int(string) < 0:
+            return False
         date = datetime.fromtimestamp(int(string), tz=timezone.utc)
         return start_date <= date <= end_date
     except ValueError:

@@ -54,7 +54,7 @@ table {
 
 td.link, td.image     { width: 200px; }
 td.text-long          { width: 300px; }
-td.text-long textarea { height: 150px; }
+td.text-long textarea { height: 150px; max-width: 300px; }
 
 
 td.link, td.image { line-break: anywhere; }
