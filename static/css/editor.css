@@ -119,9 +119,7 @@ table {
     box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
 }
 
-body {
-    background: red;
-}
+/*body {  background: red; }*/ 
 
 
 .bottom {
@@ -141,6 +139,10 @@ input.footer-input {
 }
 input.active-footer-input {
     background: var(--main-background-color) !important;
+
+    /* background: #ddd; */
+    /* color: black; */
+
     font-weight: bold;
 }
 
@@ -193,10 +195,10 @@ input[type="datetime-local"], input {
     max-width: 100px;
     max-height: 100px;
 }
-.image-failed {
-    /* line-break: auto;
-    width: 100%;*/
-}
+/* .image-failed { */
+/*     /* line-break: auto; */
+/*     width: 100%;*/ */
+/* } */
 
 form { margin: 0; }
 .center-h { align-items: center; }

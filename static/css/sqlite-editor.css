@@ -22,4 +22,3 @@ form input[type="text"], table textarea { background: #444; color: inherit; font
 form input[type="text"]:active, form input[type="text"]:focus { outline-color: transparent; }
 form input[readonly] { background: #888; }
 form input[required]:invalid { border-color: red; }
-

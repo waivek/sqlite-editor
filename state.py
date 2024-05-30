@@ -116,6 +116,16 @@ class State:
                 return table_config
         return None
 
+    def set_active_table_to_first_if_present_and_no_active_table(self):
+        db_config = self._get_active_db_config()
+        if not db_config:
+            return None
+        if db_config.active_table_name:
+            return None
+        if len(db_config.table_configs) == 0:
+            return None
+        self.set_active_table(db_config.table_configs[0].name)
+
     def print_tree(self):
         active_db_config_path = self.active_db_path
         for db_config in self.db_configs:

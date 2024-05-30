@@ -223,6 +223,7 @@ def load_db():
     db_path = request.form['db_path']
     state = request_to_state(request)
     state.set_active_db_path(db_path)
+    state.set_active_table_to_first_if_present_and_no_active_table()
     return redirect(url_for('index'))
 
 def get_autoincrementing_primary_key_or_none(table_name):
@@ -260,6 +261,19 @@ def index():
         connection = Connection(state.active_db_path)
 
     db_paths = get_db_paths()
+    # sort db_paths on mtime
+    db_paths = sorted(db_paths, key=lambda db_path: os.path.getmtime(db_path), reverse=True)
+    db_path_objects = [ { "path": db_path, "mtime": os.path.getmtime(db_path), 
+                         "size": os.path.getsize(db_path),
+                         "size_human": "{0} KB".format(int(os.path.getsize(db_path) / 1024)),
+                         "mtime_human": timeago.format(os.path.getmtime(db_path))
+                         } for db_path in db_paths ]
+    for db_path_object in db_path_objects:
+        db_path_object['human'] = f"{db_path_object['path']} ({db_path_object['size_human']}, {db_path_object['mtime_human']})"
+    # put empty db_path_object with size 0 at the end
+    db_path_objects = sorted(db_path_objects, key=lambda db_path_object: db_path_object['size'] == 0)
+
+
     
     tables = []
     columns = []
@@ -298,6 +312,9 @@ def index():
             </script>
             <style>
             .justify-between { justify-content: space-between; }
+            option { display: block !important; }
+            .red { color: red !important; }
+            .gray { color: gray !important; }
             </style>
         </head>
         <body>
@@ -321,11 +338,11 @@ def index():
                                 {% endif %}
                                 <form action="{{ url_for('load_db') }}" method="post">
                                     <select name="db_path" size="1">
-                                        {% for db_path in db_paths %}
-                                        {% if db_path == active_db_path %}
-                                        <option value="{{ db_path }}" selected>{{ db_path }}</option>
+                                        {% for db_path_object in db_path_objects %}
+                                        {% if db_path_object.path == active_db_path %}
+                                        <option value="{{ db_path_object.path }}" selected>{{ db_path_object.human }}</option>
                                         {% else %}
-                                        <option value="{{ db_path }}">{{ db_path }}</option>
+                                        <option class="{{ 'gray' if db_path_object.size == 0 else '' }}" value="{{ db_path_object.path }}">{{ db_path_object.human }}</option>
                                         {% endif %}
                                         {% endfor %}
                                     </select>
@@ -337,7 +354,7 @@ def index():
                             <div class="wide center-h">
                                 <span>Total: {{ pagination["total"] }}</span>
                                 {% if pagination["is_first_page"] %}
-                                <span>First</span>
+                                <span class="gray">First</span>
                                 {% else %}
                                 <form action="{{ url_for('page', page_number=1) }}" method="post">
                                     <input type="submit" value="First">
@@ -348,7 +365,7 @@ def index():
                                     <input type="submit" value="Prev">
                                 </form>
                                 {% else %}
-                                <span>Prev</span>
+                                <span class="gray">Prev</span>
                                 {% endif %}
                                 <span>Page {{ pagination["page"] }} of {{ pagination["page_count"] }}</span>
                                 {% if not pagination["is_last_page"] %}
@@ -356,14 +373,14 @@ def index():
                                     <input type="submit" value="Next">
                                 </form>
                                 {% else %}
-                                <span>Next</span>
+                                <span class="gray">Next</span>
                                 {% endif %}
                                 {% if not pagination["is_last_page"] %}
                                 <form action="{{ url_for('page', page_number=pagination['page_count']) }}" method="post">
                                     <input type="submit" value="Last">
                                 </form>
                                 {% else %}
-                                <span>Last</span>
+                                <span class="gray">Last</span>
                                 {% endif %}
                             </div>
                             {% endif %}
@@ -495,7 +512,7 @@ def index():
 
             </script>
         </body>
-    </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_paths=db_paths, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination)
+    </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_path_objects=db_path_objects, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination)
 
 import sqlite3
 connection : sqlite3.Connection
