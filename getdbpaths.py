@@ -21,6 +21,8 @@ def get_files(start_dir, depth, ignore_hidden=True, ignore_vcs=True, extensions=
                         continue
                     if ignore_vcs and entry.name in vcs_dirs:
                         continue
+                    if entry.is_symlink():
+                        continue
                     if entry.is_file() and entry.name.split('.')[-1] in extensions:
                         files_list.append(entry.path)
                     elif entry.is_dir():
@@ -34,10 +36,20 @@ def get_files(start_dir, depth, ignore_hidden=True, ignore_vcs=True, extensions=
 def get_db_paths(start_directory, max_depth=10, ignore_hidden_files=True, ignore_vcs_files=True, file_extensions=["db", "sqlite", "sqlite3"]):
     return get_files(start_directory, max_depth, ignore_hidden=ignore_hidden_files, ignore_vcs=ignore_vcs_files, extensions=file_extensions)
 
+def all_paths_present_in_db_paths_text_file():
+    from waivek import readlines
+    db_paths = readlines("data/db_paths.txt")
+    for path in db_paths:
+        if not os.path.exists(path):
+            return False
+    return True
+
+
+
 def update_db_paths_text_file():
     output_path = rel2abs("data/db_paths.txt")
     # if modified in the last hour, don't update
-    if os.path.exists(output_path):
+    if os.path.exists(output_path) and all_paths_present_in_db_paths_text_file():
         last_modified = os.path.getmtime(output_path)
         if time.time() - last_modified < 3600:
             return output_path

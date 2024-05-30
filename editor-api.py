@@ -263,6 +263,7 @@ def index():
         connection = Connection(state.active_db_path)
 
     db_paths = get_db_paths()
+    # db_paths = []
     # sort db_paths on mtime
     db_paths = sorted(db_paths, key=lambda db_path: os.path.getmtime(db_path), reverse=True)
     db_path_objects = [ { "path": db_path, "mtime": os.path.getmtime(db_path), 
