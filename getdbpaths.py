@@ -15,8 +15,8 @@ def get_files(start_dir, depth, ignore_hidden=True, ignore_vcs=True, extensions=
         if current_depth > depth:
             return
         try:
-            with os.scandir(current_dir) as it:
-                for entry in it:
+            with os.scandir(current_dir) as snandir_iterator:
+                for entry in snandir_iterator:
                     if ignore_hidden and entry.name.startswith('.'):
                         continue
                     if ignore_vcs and entry.name in vcs_dirs:
@@ -44,10 +44,9 @@ def all_paths_present_in_db_paths_text_file():
             return False
     return True
 
-
-
 def update_db_paths_text_file():
     output_path = rel2abs("data/db_paths.txt")
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     # if modified in the last hour, don't update
     if os.path.exists(output_path) and all_paths_present_in_db_paths_text_file():
         last_modified = os.path.getmtime(output_path)
