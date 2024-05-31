@@ -22,6 +22,8 @@ class TableConfig:
         self.page: int = 1
         self.page_size: int = 20
         self.db_path = db_path
+        self.hidden_column_names = []
+        self.sort_column_pairs = []
 
     def update_page(self, page):
         self.page = page
@@ -56,6 +58,16 @@ class State:
         for db_path in db_paths:
             self.db_configs.append(DatabaseConfig(db_path))
 
+    def _update_for_new_db_configs(self):
+        text_file_path = update_db_paths_text_file()
+        db_paths = readlines(text_file_path)
+        db_paths.sort(key=lambda db_path: os.path.getmtime(db_path), reverse=True)
+        for db_path in db_paths:
+            if db_path not in [db_config.path for db_config in self.db_configs]:
+                new_db_config = DatabaseConfig(db_path)
+                self.db_configs.append(new_db_config)
+        save_state(self)
+
     def _get_active_db_config(self):
         if not self.active_db_path:
             return None
@@ -80,6 +92,7 @@ class State:
         return json.dumps(self, default=vars, indent=4)
 
     def set_active_db_path(self, db_path: str):
+        self._update_for_new_db_configs()
         possible_db_paths = [db_config.path for db_config in self.db_configs]
         if db_path not in possible_db_paths:
             raise Exception(f"Invalid db_path: {db_path}")
@@ -126,6 +139,51 @@ class State:
         if len(db_config.table_configs) == 0:
             return None
         self.set_active_table(db_config.table_configs[0].name)
+
+    def clear_hidden_columns(self):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.hidden_column_names = []
+        save_state(self)
+
+
+    def show_column(self, column_name):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.hidden_column_names.remove(column_name)
+        save_state(self)
+
+    def hide_column(self, column_name):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.hidden_column_names.append(column_name)
+        save_state(self)
+
+    def hide_columns_batch(self, column_names):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.hidden_column_names.extend(column_names)
+        save_state(self)
+
+    def add_column_name_to_sort_column_pairs(self, column_name, sort_type):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        # check if `column_name` is in `.sort_column_pairs` and remove if it is
+        table_config.sort_column_pairs = [(col, sort) for col, sort in table_config.sort_column_pairs if col != column_name]
+        table_config.sort_column_pairs.append((column_name, sort_type))
+        save_state(self)
+
+    def remove_column_name_from_sort_column_pairs(self, column_name):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.sort_column_pairs = [(col, sort) for col, sort in table_config.sort_column_pairs if col != column_name]
+        save_state(self)
 
     def print_tree(self):
         active_db_config_path = self.active_db_path

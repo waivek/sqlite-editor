@@ -1,4 +1,5 @@
 
+
 from flask import request
 from flask import render_template_string
 from flask import render_template
@@ -108,8 +109,14 @@ def get_textarea_html(value):
 def cell_to_class(value):
     if value is None:
         return 'null'
+    if type(value) == bytes: 
+        return 'blob'
     value = str(value)
+    if '.mp4' or '.mp4?' or '.webm' or '.webm?' in value:
+        return 'video'
     if value.endswith('.jpg') or value.endswith('.png') or value.endswith('.jpeg'):
+        return 'image'
+    if '.jpg?' in value or '.png?' in value or '.jpeg?' in value:
         return 'image'
     if value.startswith('http://') or value.startswith('https://'):
         return 'link'
@@ -142,13 +149,26 @@ def paginate(select_clause, table_name, where_clause, order_by_clause, page_numb
     return rows, pagination
 
 
+
+
 def cell_to_input(value):
     if value is None:
         return r'<input type="text" name="value" value="">'
+    if type(value) == bytes:
+        return "<div>{0}</div>".format(value)
     value = str(value)
     default = r'<input type="text" name="value" value="{0}">'.format(value)
     textarea_html = get_textarea_html(value)
-    if value.endswith('.jpg') or value.endswith('.png') or value.endswith('.jpeg'):
+    if '.mp4' in value or '.mp4?' in value or '.webm' in value or '.webm?' in value:
+        video_html = r'<video controls preload="metadata"><source src="{0}" type="video/mp4"></video>'.format(value)
+        clickable_video_html = r'<a href="{0}">{1}</a>'.format(value, video_html)
+        return r"""
+        <div class="tall">
+            <div>{0}</div>
+            {1}
+        </div>
+        """.format(clickable_video_html, textarea_html)
+    if value.endswith('.jpg') or value.endswith('.png') or value.endswith('.jpeg') or '.jpg?' in value or '.png?' in value or '.jpeg?' in value:
         image_html = r'<img src="{0}" class="image-success" alt="{0}" title="{0}" onerror="handle_image_error(this)">'.format(value)
         clickable_image_html = r'<a href="{0}" >{1}</a>'.format(value, image_html)
         return r"""
@@ -254,6 +274,99 @@ def page(page_number):
     state.set_page(page_number)
     return redirect(url_for('index'))
 
+@app.route('/api/hide_column', methods=['POST'])
+def hide_column():
+    state = request_to_state(request)
+    column_name = request.args.get('column_name')
+    state.hide_column(column_name)
+    return redirect(url_for('index'))
+
+@app.route('/api/update_column_visibility_batch', methods=['POST'])
+def update_column_visibility_batch():
+    state = request_to_state(request)
+    active_table_config = state.get_active_table_config()
+    if not active_table_config:
+        raise Exception("No active table config")
+    table_name = active_table_config.name
+    connection = request_to_connection(request)
+    # get column names
+    cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
+    columns = cursor.fetchall()
+    column_names = [ column['name'] for column in columns ]
+    selected_column_names = request.form.getlist('column_names')
+    hidden_column_names = set(column_names) - set(selected_column_names)
+    state.clear_hidden_columns()
+    state.hide_columns_batch(hidden_column_names)
+    return redirect(url_for('index'))
+
+@app.route('/api/add_column_name_to_sort_column_pairs', methods=['POST'])
+def add_column_name_to_sort_column_pairs():
+    state = request_to_state(request)
+    column_name = request.form.get('column_name')
+    sort_type = request.form.get('sort_type')
+    state.add_column_name_to_sort_column_pairs(column_name, sort_type)
+    return redirect(url_for('index'))
+
+@app.route('/api/remove_column_name_from_sort_column_pairs', methods=['POST'])
+def remove_column_name_from_sort_column_pairs():
+    state = request_to_state(request)
+    column_name = request.form.get('column_name')
+    state.remove_column_name_from_sort_column_pairs(column_name)
+    return redirect(url_for('index'))
+
+@app.route('/api/view_batch_select_column_names', methods=['GET'])
+def view_batch_select_column_names():
+    state = request_to_state(request)
+    connection = request_to_connection(request)
+    table_config = state.get_active_table_config()
+    if not table_config:
+        raise Exception("No active table config")
+    table_name = table_config.name
+    hidden_column_names = table_config.hidden_column_names
+    cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
+    columns = cursor.fetchall()
+    return render_template_string("""
+    <html>
+        <head>
+            <title>Editor API</title>
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/sqlite-editor.css') }}">
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
+            <style>
+            label { user-select: none; }
+            </style>
+        </head>
+        <body>
+            <div class="container font-mono">
+                <div class="content">
+                    <div class="scrollable-content">
+                        <div class="inner-scrollable-content">
+                            <form action="{{ url_for('update_column_visibility_batch') }}" method="post">
+                                <div class="tall">
+                                    <div>
+                                        {% for column in columns %}
+                                        <label class="wide center-h">
+                                            <input type="checkbox" name="column_names" value="{{ column.name }}" {% if column.name not in hidden_column_names %}checked{% endif %}>
+                                            <span>{{ column.name }}</span>
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                    <div><input type="submit" value="Update"></div>
+                                    <!-- controls to "Select All" and "Select None" via javascript -->
+                                    <div>
+                                        <input type="button" value="Select All" onclick="document.querySelectorAll('input[name=column_names]').forEach((input) => input.checked = true)">
+                                        <input type="button" value="Select None" onclick="document.querySelectorAll('input[name=column_names]').forEach((input) => input.checked = false)">
+                                    </div>
+
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </body>
+    </html>
+    """, state=state, columns=columns, table_name=table_name, hidden_column_names=hidden_column_names)
+
 @app.route('/', methods=['GET'])
 def index():
     if 'id' not in session:
@@ -301,10 +414,16 @@ def index():
         table_name = table_config.name
         cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
         columns = cursor.fetchall()
+        columns = [ column for column in columns if column['name'] not in table_config.hidden_column_names ]
 
         autoincrementing_primary_key_name = get_autoincrementing_primary_key_or_none(table_name)
 
-        rows, pagination = paginate("SELECT *", table_name, "", "", table_config.page, table_config.page_size)
+        order_by_clause = ""
+        if table_config.sort_column_pairs:
+            sort_column_pairs = table_config.sort_column_pairs
+            order_by_clause = "ORDER BY " + ", ".join([ f"[{column_name}] {sort_type}" for column_name, sort_type in sort_column_pairs ])
+
+        rows, pagination = paginate("SELECT *", table_name, "", order_by_clause, table_config.page, table_config.page_size)
 
     return render_template_string("""
     <html>
@@ -314,6 +433,7 @@ def index():
             <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
             <script>
                 function handle_image_error(image) {
+                    console.log('Image Error');
                     image.classList.replace('image-success', 'image-failed');
                     image.alt = 'Image errored';
                 }
@@ -360,36 +480,44 @@ def index():
                             {% if active_table_name %}
                             <!-- pagination -->
                             <div class="wide center-h">
-                                <span>Total: {{ pagination["total"] }}</span>
-                                {% if pagination["is_first_page"] %}
-                                <span class="gray">First</span>
-                                {% else %}
-                                <form action="{{ url_for('page', page_number=1) }}" method="post">
-                                    <input type="submit" value="First">
-                                </form>
-                                {% endif %}
-                                {% if not pagination["is_first_page"] %}
-                                <form action="{{ url_for('page', page_number=pagination['prev']) }}" method="post">
-                                    <input type="submit" value="Prev">
-                                </form>
-                                {% else %}
-                                <span class="gray">Prev</span>
-                                {% endif %}
-                                <span>Page {{ pagination["page"] }} of {{ pagination["page_count"] }}</span>
-                                {% if not pagination["is_last_page"] %}
-                                <form action="{{ url_for('page', page_number=pagination['next']) }}" method="post">
-                                    <input type="submit" value="Next">
-                                </form>
-                                {% else %}
-                                <span class="gray">Next</span>
-                                {% endif %}
-                                {% if not pagination["is_last_page"] %}
-                                <form action="{{ url_for('page', page_number=pagination['page_count']) }}" method="post">
-                                    <input type="submit" value="Last">
-                                </form>
-                                {% else %}
-                                <span class="gray">Last</span>
-                                {% endif %}
+                                <div class="wide center-h">
+                                    <span>Total: {{ pagination["total"] }}</span>
+                                    {% if pagination["is_first_page"] %}
+                                    <span class="gray">First</span>
+                                    {% else %}
+                                    <form action="{{ url_for('page', page_number=1) }}" method="post">
+                                        <input type="submit" value="First">
+                                    </form>
+                                    {% endif %}
+                                    {% if not pagination["is_first_page"] %}
+                                    <form action="{{ url_for('page', page_number=pagination['prev']) }}" method="post">
+                                        <input type="submit" value="Prev">
+                                    </form>
+                                    {% else %}
+                                    <span class="gray">Prev</span>
+                                    {% endif %}
+                                    <span>Page {{ pagination["page"] }} of {{ pagination["page_count"] }}</span>
+                                    {% if not pagination["is_last_page"] %}
+                                    <form action="{{ url_for('page', page_number=pagination['next']) }}" method="post">
+                                        <input type="submit" value="Next">
+                                    </form>
+                                    {% else %}
+                                    <span class="gray">Next</span>
+                                    {% endif %}
+                                    {% if not pagination["is_last_page"] %}
+                                    <form action="{{ url_for('page', page_number=pagination['page_count']) }}" method="post">
+                                        <input type="submit" value="Last">
+                                    </form>
+                                    {% else %}
+                                    <span class="gray">Last</span>
+                                    {% endif %}
+                                </div>
+
+                                <div>
+                                    <div>
+                                        <a href="{{ url_for('view_batch_select_column_names') }}">Batch select column names</a>
+                                    </div>
+                                </div>
                             </div>
                             {% endif %}
                                 
@@ -402,8 +530,50 @@ def index():
                                     <tr>
                                         {% for column in columns %}
                                         <th>
-                                            {{ column.name }} ({{ column.type }})
-                                            </th>
+                                            <div class="tall">
+                                                <div>{{ column.name }} ({{ column.type }})</div>
+                                                <div class="wide center-h thead-controls">
+                                                    <span>
+                                                        <form action="{{ url_for('hide_column', db_path=active_db_path, table_name=active_table_name, column_name=column.name) }}" method="POST">
+                                                            <input type="submit" value="Hide" class="gray">
+                                                        </form>
+                                                    </span>
+                                                    {% if (column.name, 'ASC') not in state.get_active_table_config().sort_column_pairs %}
+                                                    <span>
+                                                        <form action="{{ url_for('add_column_name_to_sort_column_pairs', db_path=active_db_path, table_name=active_table_name) }}" method="POST">
+                                                            <input type="hidden" name="column_name" value="{{ column.name }}">
+                                                            <input type="hidden" name="sort_type" value="ASC">
+                                                            <input type="submit" value="ASC" class="gray">
+                                                        </form>
+                                                    </span>
+                                                    {% else %}
+                                                    <span class="bold white">ASC</span>
+                                                    {% endif %}
+
+                                                    {% if (column.name, 'DESC') not in state.get_active_table_config().sort_column_pairs %}
+                                                    <span>
+                                                        <form action="{{ url_for('add_column_name_to_sort_column_pairs', db_path=active_db_path, table_name=active_table_name) }}" method="POST">
+                                                            <input type="hidden" name="column_name" value="{{ column.name }}">
+                                                            <input type="hidden" name="sort_type" value="DESC">
+                                                            <input type="submit" value="DESC" class="gray">
+                                                        </form>
+                                                    </span>
+                                                    {% else %}
+                                                    <span class="bold white">DESC</span>
+                                                    {% endif %}
+                                                    {% if (column.name, 'ASC') in state.get_active_table_config().sort_column_pairs or (column.name, 'DESC') in state.get_active_table_config().sort_column_pairs %}
+                                                    <span>
+                                                        <form action="{{ url_for('remove_column_name_from_sort_column_pairs', db_path=active_db_path, table_name=active_table_name) }}" method="POST">
+                                                            <input type="hidden" name="column_name" value="{{ column.name }}">
+                                                            <input type="submit" value="Clear" class="gray">
+                                                        </form>
+                                                    </span>
+                                                    {% endif %}
+                                                        
+                                                </div>
+                                            </div>
+
+                                        </th>
                                         {% endfor %}
                                     </tr>
                                 </thead>
@@ -415,7 +585,10 @@ def index():
                                             <div>
                                                 {% if autoincrementing_primary_key_name and column.name == autoincrementing_primary_key_name %}
                                                 <span style="color: gray">{{ row['id'] }}</span>
+                                                {% elif cell_to_class(row[column.name]) == 'blob' %}
+                                                {{ row[column.name] }}
                                                 {% else %}
+
                                                 <form action="{{ url_for('update_cell', table_name=active_table_name, column_name=column.name, row_id=row['id']) }}" method="post">
 
                                                     <!-- cell_to_input(row[column.name]) -->
@@ -429,21 +602,22 @@ def index():
                                     {% endfor %}
                                     <form action="{{ url_for('add_row', table_name=active_table_name) }}" method="post">
                                         <tr>
-                                            <td>
-                                                ID
-                                            </td>
-                                            {% for column in columns if column.name != 'id' %}
-                                            <td>
-                                                <input type="text" name="{{ column.name }}" placeholder="{{ column.name }}">
-                                            </td>
+                                            {% for column in columns %}
+                                                {% if autoincrementing_primary_key_name and column.name == autoincrementing_primary_key_name %}
+                                                <td>
+                                                    <div style="color: gray">{{ column.name }}</div>
+                                                    <div style="color: gray">AUTOINCREMENT</div>
+                                                </td>
+                                                {% else %}
+                                                <td>
+                                                    <input type="text" name="{{ column.name }}" placeholder="{{ column.name }}">
+                                                </td>
+                                                {% endif %}
                                             {% endfor %}
                                         </tr>
                                         <!-- make td aligned to right -->
                                         <tr>
-                                            {% for i in range(columns.__len__()-1) %}
-                                            <td></td>
-                                            {% endfor %}
-                                            <td><input type="submit" value="Add row"></td>
+                                            <td colspan="{{ columns|length }}" style="text-align: right;"><input type="submit" value="Add row"></td>
                                         </tr>
                                     </form>
 
@@ -528,7 +702,7 @@ connection : sqlite3.Connection
 def main():
     secret_key = 'secret'
     app.secret_key = secret_key
-    app.run(host='0.0.0.0', port=8000, debug=True, use_reloader=True)
+    app.run(host='0.0.0.0', port=3000, debug=True, use_reloader=True)
 
 if __name__ == "__main__":
     main()

@@ -55,6 +55,8 @@ table {
 td.link, td.image     { width: 200px; }
 td.text-long          { width: 300px; }
 td.text-long textarea { height: 150px; max-width: 300px; }
+td.blob               { max-width: 300px; max-height: 150px; }
+td.blob div           { max-width: inherit; max-height: inherit; overflow-y: scroll; line-break: anywhere; }
 
 
 td.link, td.image { line-break: anywhere; }
@@ -109,8 +111,12 @@ form input[type="text"] {
 }
 thead {
     position: sticky;
+    z-index: 1;
     top: -1rem;
     background: var(--main-background-color);
+}
+video {
+    z-index: 0;
 }
 .sticky {
     box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
@@ -197,10 +203,11 @@ input[type="datetime-local"], input {
 }
 /* .image-failed { */
 /*     /* line-break: auto; */
-/*     width: 100%;*/ */
+/*     width: 100%;*/ 
 /* } */
 
-form { margin: 0; }
+form { margin: 0 !important; }
 .center-h { align-items: center; }
 
-
+.thead-controls { font-weight: normal; }
+.white { color: white; }
