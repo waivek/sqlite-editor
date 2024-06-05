@@ -16,6 +16,7 @@ import timeago
 import json
 from state import get_state
 from flask import session
+import html
 
 app = Flask(__name__)
 app.config['Access-Control-Allow-Origin'] = '*'
@@ -157,6 +158,7 @@ def cell_to_input(value):
     if type(value) == bytes:
         return "<div>{0}</div>".format(value)
     value = str(value)
+    value = html.escape(value)
     default = r'<input type="text" name="value" value="{0}">'.format(value)
     textarea_html = get_textarea_html(value)
     if '.mp4' in value or '.mp4?' in value or '.webm' in value or '.webm?' in value:
@@ -314,7 +316,7 @@ def remove_column_name_from_sort_column_pairs():
     state.remove_column_name_from_sort_column_pairs(column_name)
     return redirect(url_for('index'))
 
-@app.route('/api/view_batch_select_column_names', methods=['GET'])
+@app.route('/views/view_batch_select_column_names', methods=['GET'])
 def view_batch_select_column_names():
     state = request_to_state(request)
     connection = request_to_connection(request)
@@ -329,7 +331,7 @@ def view_batch_select_column_names():
     <html>
         <head>
             <title>Editor API</title>
-            <link rel="stylesheet" href="{{ url_for('static', filename='css/sqlite-editor.css') }}">
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/base-dark.css') }}">
             <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
             <style>
             label { user-select: none; }
@@ -429,7 +431,7 @@ def index():
     <html>
         <head>
             <title>Editor API</title>
-            <link rel="stylesheet" href="{{ url_for('static', filename='css/sqlite-editor.css') }}">
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/base-dark.css') }}">
             <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
             <script>
                 function handle_image_error(image) {

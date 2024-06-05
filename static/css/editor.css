@@ -54,14 +54,22 @@ table {
 
 td.link, td.image     { width: 200px; }
 td.text-long          { width: 300px; }
-td.text-long textarea { height: 150px; max-width: 300px; }
 td.blob               { max-width: 300px; max-height: 150px; }
 td.blob div           { max-width: inherit; max-height: inherit; overflow-y: scroll; line-break: anywhere; }
 
+video {
+    max-width: 300px;
+}
+
+textarea {
+    height: 3rem;
+    overflow-y: hidden;
+    height: 150px;
+    width: 300px;
+}
 
 td.link, td.image { line-break: anywhere; }
-textarea                                    { height: 3rem; overflow-y: hidden; width: 100%; }
-textarea:focus, td.text-long textarea:focus { height: auto; field-sizing: content }
+textarea:focus { height: auto; field-sizing: content }
 
 th { text-align: left; }
 table {
