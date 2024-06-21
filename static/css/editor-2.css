@@ -1,0 +1,52 @@
+
+/* SCROLLABLE EDITOR {{{ */
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.content {
+    flex: 1;
+    padding: 1em;
+    overflow: auto;
+}
+/* }}} SCROLLABLE EDITOR */
+
+th {
+    font-weight: normal;
+    color: #aaa;
+}
+
+.bottom {
+    padding: 8px;
+    box-shadow: var(--shadow-all);
+}
+input[type="submit"].active-footer-input {
+    background: var(--bg-container);
+}
+
+
+/* SCROLLBAR {{{ */
+::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #666;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-container);
+}
+
+::-webkit-scrollbar-corner {
+    background: var(--bg-container);
+}
+/* }}} SCROLLBAR */

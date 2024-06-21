@@ -427,12 +427,19 @@ def index():
 
         rows, pagination = paginate("SELECT *", table_name, "", order_by_clause, table_config.page, table_config.page_size)
 
+    feature_flag = True
     return render_template_string("""
     <html>
         <head>
             <title>Editor API</title>
-            <link rel="stylesheet" href="{{ url_for('static', filename='css/base-dark.css') }}">
-            <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
+            {% if feature_flag %}
+            <link rel="stylesheet" href="http://localhost:5173/static/css-utilities/wide-tall.css">
+            <link rel="stylesheet" href="http://localhost:5173/static/css-themes/dark-gray-mono.css">
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/editor-2.css') }}"> 
+            {% else %}
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/base-dark.css') }}">  
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}"> 
+            {% endif %}
             <script>
                 function handle_image_error(image) {
                     console.log('Image Error');
@@ -442,17 +449,25 @@ def index():
             </script>
             <style>
             .justify-between { justify-content: space-between; }
-            option { display: block !important; }
+            .flex-wrap { flex-wrap: wrap; }
+            .font-bold { font-weight: bold; }
             .red { color: red !important; }
             .gray { color: gray !important; }
+            .white { color: white !important; }
             </style>
         </head>
         <body>
             <div class="container font-mono">
+                {% if feature_flag %}
+                <div class="content tall">
+                {% else %}
                 <div class="content">
                     <div class="scrollable-content">
                         <div class="inner-scrollable-content tall">
-                            <div class="wide justify-between">
+                {% endif %}
+
+                    
+                            <div class="wide flex-wrap justify-between">
                                 {% if active_table_name %}
                                 <form action="{{ url_for('add_column', table_name=active_table_name) }}" method="post">
                                     <input type="text" name="name" placeholder="Column name">
@@ -522,7 +537,7 @@ def index():
                                 </div>
                             </div>
                             {% endif %}
-                                
+
 
 
 
@@ -533,7 +548,7 @@ def index():
                                         {% for column in columns %}
                                         <th>
                                             <div class="tall">
-                                                <div>{{ column.name }} ({{ column.type }})</div>
+                                                <div class="font-bold">{{ column.name }} ({{ column.type }})</div>
                                                 <div class="wide center-h thead-controls">
                                                     <span>
                                                         <form action="{{ url_for('hide_column', db_path=active_db_path, table_name=active_table_name, column_name=column.name) }}" method="POST">
@@ -549,7 +564,7 @@ def index():
                                                         </form>
                                                     </span>
                                                     {% else %}
-                                                    <span class="bold white">ASC</span>
+                                                    <span class="font-bold white">ASC</span>
                                                     {% endif %}
 
                                                     {% if (column.name, 'DESC') not in state.get_active_table_config().sort_column_pairs %}
@@ -561,7 +576,7 @@ def index():
                                                         </form>
                                                     </span>
                                                     {% else %}
-                                                    <span class="bold white">DESC</span>
+                                                    <span class="font-bold white">DESC</span>
                                                     {% endif %}
                                                     {% if (column.name, 'ASC') in state.get_active_table_config().sort_column_pairs or (column.name, 'DESC') in state.get_active_table_config().sort_column_pairs %}
                                                     <span>
@@ -571,7 +586,7 @@ def index():
                                                         </form>
                                                     </span>
                                                     {% endif %}
-                                                        
+
                                                 </div>
                                             </div>
 
@@ -627,16 +642,18 @@ def index():
 
                             </table>
                             {% endif %}
-                        </div>
-                    </div>
                 </div> <!-- end div.content -->
+                    {% if not feature_flag  %}
+                    </div>
+                    </div>
+                    {% endif %}
                 <div class="wide bottom">
                     {% for table in tables %}
                     <form action="{{ url_for('select_table', table_name=table.name) }}" method="post">
                         {% if table.name == active_table_name %}
-                        <input type="submit" value="{{ table.name }}" class="active-footer-input">
+                        <input type="submit" value="{{ table.name }}" class="active-footer-input font-bold">
                         {% else %}
-                        <input type="submit" value="{{ table.name }}" class="footer-input">
+                        <input type="submit" value="{{ table.name }}" class="footer-input gray">
                         {% endif %}
                         <!-- hidden payload containing db_path -->
                         <input type="hidden" name="db_path" value="{{ active_db_path }}">
@@ -696,7 +713,7 @@ def index():
 
             </script>
         </body>
-    </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_path_objects=db_path_objects, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination)
+    </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_path_objects=db_path_objects, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination, feature_flag=feature_flag)
 
 import sqlite3
 connection : sqlite3.Connection
