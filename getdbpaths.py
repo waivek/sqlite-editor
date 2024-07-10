@@ -53,7 +53,7 @@ def update_db_paths_text_file():
         if time.time() - last_modified < 3600:
             return output_path
     home_dir = os.path.expanduser("~")
-    db_paths = get_db_paths(home_dir)
+    db_paths = get_db_paths(home_dir, ignore_hidden_files=False)
     with open(output_path, "w") as f:
         for path in db_paths:
             f.write(path + "\n")
@@ -62,11 +62,10 @@ def update_db_paths_text_file():
 if __name__ == "__main__":
     from waivek import Timer
     timer = Timer()
-    timer.start("update_db_paths_text_file")
     path = update_db_paths_text_file()
-    timer.print("update_db_paths_text_file")
     lines = readlines(path)
-    ic(lines)
+    for line in lines:
+        print(line)
 
     sys.exit(0)
     # Example usage
