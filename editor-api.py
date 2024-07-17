@@ -433,9 +433,12 @@ def index():
         <head>
             <title>Editor API</title>
             {% if feature_flag %}
-            <link rel="stylesheet" href="http://localhost:5173/static/css-utilities/wide-tall.css">
-            <link rel="stylesheet" href="http://localhost:5173/static/css-themes/dark-gray-mono.css">
+
+            <link rel="stylesheet" href="{{ url_for('static', filename='ui-components-css/css-utilities/wide-tall.css') }}"> 
+            <link rel="stylesheet" href="{{ url_for('static', filename='ui-components-css/css-themes/dark-gray-mono.css') }}"> 
+
             <link rel="stylesheet" href="{{ url_for('static', filename='css/editor-2.css') }}"> 
+
             {% else %}
             <link rel="stylesheet" href="{{ url_for('static', filename='css/base-dark.css') }}">  
             <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}"> 
