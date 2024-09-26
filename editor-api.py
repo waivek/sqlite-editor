@@ -427,6 +427,7 @@ def index():
 
         rows, pagination = paginate("SELECT *", table_name, "", order_by_clause, table_config.page, table_config.page_size)
 
+    # feature_flag = False
     feature_flag = True
     return render_template_string("""
     <html>
