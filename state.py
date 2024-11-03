@@ -24,6 +24,7 @@ class TableConfig:
         self.db_path = db_path
         self.hidden_column_names = []
         self.sort_column_pairs = []
+        self.column_value_filters_dict = {}
 
     def update_page(self, page):
         self.page = page
@@ -32,7 +33,6 @@ class TableConfig:
 
     def __str__(self):
         return "TableConfig(db_path={}, name={})".format(self.db_path, self.name)
-
 
 class DatabaseConfig:
 
@@ -147,7 +147,6 @@ class State:
         table_config.hidden_column_names = []
         save_state(self)
 
-
     def show_column(self, column_name):
         table_config = self.get_active_table_config()
         if not table_config:
@@ -183,6 +182,20 @@ class State:
         if not table_config:
             raise Exception("No active table_config")
         table_config.sort_column_pairs = [(col, sort) for col, sort in table_config.sort_column_pairs if col != column_name]
+        save_state(self)
+
+    def clear_column_value_filter(self, column_name):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.column_value_filters_dict.pop(column_name, None)
+        save_state(self)
+
+    def set_column_value_filter(self, column_name, values, clause):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.column_value_filters_dict[column_name] = (values, clause)
         save_state(self)
 
     def print_tree(self):
@@ -246,5 +259,4 @@ DEBUG = False
 if __name__ == "__main__":
     with handler():
         main()
-
 

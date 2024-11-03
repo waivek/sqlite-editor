@@ -59,13 +59,22 @@ def update_db_paths_text_file():
             f.write(path + "\n")
     return output_path
 
+def cron():
+    update_db_paths_text_file()
+
 if __name__ == "__main__":
     from waivek import Timer
     timer = Timer()
-    path = update_db_paths_text_file()
-    lines = readlines(path)
-    for line in lines:
-        print(line)
+    # path = update_db_paths_text_file()
+    # lines = readlines(path)
+    # for line in lines:
+        # print(line)
+
+    timer.start("get_db_paths")
+    paths = get_db_paths(os.path.expanduser("~"), ignore_hidden_files=False)
+    timer.print("get_db_paths")
+    # for path in paths:
+    #     print(path)
 
     sys.exit(0)
     # Example usage

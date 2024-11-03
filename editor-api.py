@@ -331,8 +331,8 @@ def view_batch_select_column_names():
     <html>
         <head>
             <title>Editor API</title>
-            <link rel="stylesheet" href="{{ url_for('static', filename='css/base-dark.css') }}">
-            <link rel="stylesheet" href="{{ url_for('static', filename='css/editor.css') }}">
+            <link rel="stylesheet" href="{{ url_for('static', filename='ui-components-css/css-utilities/wide-tall.css') }}">
+            <link rel="stylesheet" href="{{ url_for('static', filename='ui-components-css/css-themes/dark-gray-mono.css') }}">
             <style>
             label { user-select: none; }
             </style>
@@ -355,8 +355,10 @@ def view_batch_select_column_names():
                                     <div><input type="submit" value="Update"></div>
                                     <!-- controls to "Select All" and "Select None" via javascript -->
                                     <div>
-                                        <input type="button" value="Select All" onclick="document.querySelectorAll('input[name=column_names]').forEach((input) => input.checked = true)">
-                                        <input type="button" value="Select None" onclick="document.querySelectorAll('input[name=column_names]').forEach((input) => input.checked = false)">
+                                        {# <input type="button" value="Select All" onclick="document.querySelectorAll('input[name=column_names]').forEach((input) => input.checked = true)"> #}
+                                        {# <input type="button" value="Select None" onclick="document.querySelectorAll('input[name=column_names]').forEach((input) => input.checked = false)"> #}
+                                        <button type="button" onclick="document.querySelectorAll('input[name=column_names]').forEach((input) => input.checked = true)">Select All</button>
+                                        <button type="button" onclick="document.querySelectorAll('input[name=column_names]').forEach((input) => input.checked = false)">Select None</button>
                                     </div>
 
                                 </div>
@@ -368,6 +370,94 @@ def view_batch_select_column_names():
         </body>
     </html>
     """, state=state, columns=columns, table_name=table_name, hidden_column_names=hidden_column_names)
+
+@app.route('/api/tables/<table_name>/columns/<column_name>/value_filter', methods=['POST'])
+def update_column_value_filter(table_name, column_name):
+
+    selected_values = request.form.getlist('values')
+    connection = request_to_connection(request)
+    cursor = connection.execute("SELECT DISTINCT [{0}] FROM [{1}];".format(column_name, table_name))
+    distinct_values = [ row[0] for row in cursor.fetchall() ]
+    state = request_to_state(request)
+    if len(selected_values) == len(distinct_values):
+        state.clear_column_value_filter(column_name)
+        return redirect(url_for('index'))
+    # get column type
+    cursor = connection.execute(f"PRAGMA table_info([{table_name}]);")
+    columns = cursor.fetchall()
+    column_type = next(column['type'] for column in columns if column['name'] == column_name)
+    if column_type == "INTEGER":
+        selected_values = [ int(value) for value in selected_values ]
+        distinct_values = [ int(value) for value in distinct_values ]
+    elif column_type == "REAL":
+        selected_values = [ float(value) for value in selected_values ]
+        distinct_values = [ float(value) for value in distinct_values ]
+    else:
+        selected_values = [ str(value) for value in selected_values ]
+        distinct_values = [ str(value) for value in distinct_values ]
+
+    unselected_values = set(distinct_values) - set(selected_values)
+    if len(selected_values) < len(unselected_values):
+        state.set_column_value_filter(column_name, selected_values, "IN")
+    else:
+        state.set_column_value_filter(column_name, unselected_values, "NOT IN")
+    return redirect(url_for('index'))
+
+@app.route('/views/view_select_column_values/<column_name>', methods=['GET'])
+def view_select_column_values(column_name):
+    state = request_to_state(request)
+    connection = request_to_connection(request)
+    table_config = state.get_active_table_config()
+    if not table_config:
+        raise Exception("No active table config")
+    table_name = table_config.name
+    cursor = connection.execute(f"SELECT [{column_name}], COUNT(*) FROM [{table_name}] GROUP BY [{column_name}] ORDER BY COUNT(*) DESC;")
+    rows = cursor.fetchall()
+    all_values = [ row[0] for row in rows ]
+    selected_values = []
+    if column_name in table_config.column_value_filters_dict:
+        values, clause = table_config.column_value_filters_dict[column_name]
+        if clause == "IN":
+            selected_values = values
+        else:
+            selected_values = set(all_values) - set(values)
+    else:
+        selected_values = all_values
+    return render_template_string("""
+    <html>
+        <head>
+            <title>Editor API</title>
+            <link rel="stylesheet" href="{{ url_for('static', filename='ui-components-css/css-utilities/wide-tall.css') }}">
+            <link rel="stylesheet" href="{{ url_for('static', filename='ui-components-css/css-themes/dark-gray-mono.css') }}">
+            <style>
+            label { user-select: none; }
+            </style>
+        </head>
+        <body class="font-mono">
+            <h1>{{ column_name }}</h1>
+            <form action="{{ url_for('update_column_value_filter', table_name=table_name, column_name=column_name) }}" method="post">
+                <div class="tall">
+                    <div>
+                        {% for row in rows %}
+                        <label class="wide center-h">
+                            <input type="checkbox" name="values" value="{{ row[0] }}" {% if row[0] in selected_values %}checked{% endif %}>
+                            <span>{{ row[0] }} ({{ row[1] }})</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    <div>
+                        <button type="button" onclick="document.querySelectorAll('input[name=values]').forEach((input) => input.checked = true)">Select All</button>
+                        <button type="button" onclick="document.querySelectorAll('input[name=values]').forEach((input) => input.checked = false)">Select None</button>
+                    </div>
+                    <div>
+                        <input type="submit" value="Update">
+                    </div>
+                </div>
+            </form>
+        </body>
+    </html>
+    """, state=state, rows=rows, column_name=column_name, table_name=table_name, selected_values=selected_values)
+
 
 @app.route('/', methods=['GET'])
 def index():
@@ -425,7 +515,15 @@ def index():
             sort_column_pairs = table_config.sort_column_pairs
             order_by_clause = "ORDER BY " + ", ".join([ f"[{column_name}] {sort_type}" for column_name, sort_type in sort_column_pairs ])
 
-        rows, pagination = paginate("SELECT *", table_name, "", order_by_clause, table_config.page, table_config.page_size)
+        where_clause = ""
+        if table_config.column_value_filters_dict:
+            where_clauses = []
+            for column_name, (values, clause) in table_config.column_value_filters_dict.items():
+                values_string = ", ".join([ f"'{value}'" for value in values ])
+                where_clauses.append(f"[{column_name}] {clause} ({values_string})")
+            where_clause = "WHERE " + " AND ".join(where_clauses)
+
+        rows, pagination = paginate("SELECT *", table_name, where_clause, order_by_clause, table_config.page, table_config.page_size)
 
     # feature_flag = False
     feature_flag = True
@@ -458,6 +556,8 @@ def index():
             .red { color: red !important; }
             .gray { color: gray !important; }
             .white { color: white !important; }
+            input[type="submit"] { cursor: pointer; }
+            input[type="submit"]:hover { background-color: black; color: white !important; border-color: transparent; }
             </style>
         </head>
         <body>
@@ -552,7 +652,14 @@ def index():
                                         {% for column in columns %}
                                         <th>
                                             <div class="tall">
-                                                <div class="font-bold">{{ column.name }} ({{ column.type }})</div>
+                                                <div class="font-bold">
+                                                    {% if column.name in table_config.column_value_filters_dict %}
+                                                    <a href="{{ url_for('view_select_column_values', column_name=column.name) }}" class="red">{{ column.name }}</a>
+                                                    {% else %}
+                                                    <a href="{{ url_for('view_select_column_values', column_name=column.name) }}">{{ column.name }}</a>
+                                                    {% endif %}
+                                                    <span>({{ column.type }})</span>
+                                                </div>
                                                 <div class="wide center-h thead-controls">
                                                     <span>
                                                         <form action="{{ url_for('hide_column', db_path=active_db_path, table_name=active_table_name, column_name=column.name) }}" method="POST">
@@ -717,7 +824,7 @@ def index():
 
             </script>
         </body>
-    </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_path_objects=db_path_objects, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination, feature_flag=feature_flag)
+    </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_path_objects=db_path_objects, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination, feature_flag=feature_flag, table_config=table_config)
 
 import sqlite3
 connection : sqlite3.Connection
