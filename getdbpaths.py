@@ -33,11 +33,20 @@ def get_files(start_dir, depth, ignore_hidden=True, ignore_vcs=True, extensions=
     recurse(start_dir, 1)
     return files_list
 
+def is_sqlite_file(file_path):
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(16)
+            return header == b"SQLite format 3\x00"
+    except Exception as e:
+        return False
+
 def get_db_paths(start_directory, max_depth=10, ignore_hidden_files=True, ignore_vcs_files=True, file_extensions=["db", "sqlite", "sqlite3"]):
-    return get_files(start_directory, max_depth, ignore_hidden=ignore_hidden_files, ignore_vcs=ignore_vcs_files, extensions=file_extensions)
+    files = get_files(start_directory, max_depth, ignore_hidden=ignore_hidden_files, ignore_vcs=ignore_vcs_files, extensions=file_extensions)
+    files = [ file for file in files if is_sqlite_file(file) ]
+    return files
 
 def all_paths_present_in_db_paths_text_file():
-    from waivek import readlines
     db_paths = readlines("data/db_paths.txt")
     for path in db_paths:
         if not os.path.exists(path):
