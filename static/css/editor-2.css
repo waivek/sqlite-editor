@@ -26,6 +26,10 @@ input[type="submit"].active-footer-input {
     background: var(--bg-container);
 }
 
+tr input {
+    field-sizing: content;
+}
+
 
 /* SCROLLBAR {{{ */
 ::-webkit-scrollbar {

@@ -1,4 +1,4 @@
-waivek
+box
 wheel
 Flask
 flask-cors
@@ -8,3 +8,5 @@ python-dotenv
 
 dataclasses-json
 jsonpickle
+
+lorem

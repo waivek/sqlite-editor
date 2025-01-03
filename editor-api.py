@@ -1,5 +1,3 @@
-
-
 from flask import request
 from flask import render_template_string
 from flask import render_template
@@ -130,6 +128,9 @@ def cell_to_class(value):
 def paginate(select_clause, table_name, where_clause, order_by_clause, page_number, page_size):
     # page_number is 1-indexed
     offset = (page_number - 1) * page_size
+    # Add rowid to the SELECT clause if it's not already there
+    if select_clause == "SELECT *":
+        select_clause = "SELECT *, rowid"
     cursor = connection.execute(f"{select_clause} FROM [{table_name}] {where_clause} {order_by_clause} LIMIT {page_size} OFFSET {offset};")
     rows = cursor.fetchall()
     cursor_2 = connection.execute(f"SELECT COUNT(*) FROM [{table_name}] {where_clause};")
@@ -186,7 +187,11 @@ def cell_to_input(value):
             <div><a href="{0}">{0}</a></div>
             <div>{1}</div>
         </div>
-        """.format(value, textarea_html)
+        """.format(value, default)
+    if len(value) > 100:
+        return textarea_html
+    if "\n" in value:
+        return textarea_html
     if is_date_epoch(value) or is_date_iso(value):
         if is_date_epoch(value):
             date = datetime.fromtimestamp(int(value), tz=timezone.utc)
@@ -209,8 +214,7 @@ def cell_to_input(value):
         """.format(html_friendly_date_string, timeago_string, human_readable_date_string, value)
         return r'<div>{0}</div><input type="datetime-local" name="value" value="{0}">'.format(html_friendly_date_string)
         return r'<input type="datetime-local" name="value" value="{0}">'.format(date.isoformat())
-    if len(value) > 100:
-        return textarea_html
+    # return default
     return default
 
 def parse_date_iso(string):
@@ -585,7 +589,7 @@ def index():
                                     <input type="submit" value="Add column">
                                 </form>
                                 {% endif %}
-                                <form action="{{ url_for('load_db') }}" method="post">
+                                <form action="{{ url_for('load_db') }}" method="post" class="wide flex-wrap">
                                     <select name="db_path" size="1">
                                         {% for db_path_object in db_path_objects %}
                                         {% if db_path_object.path == active_db_path %}
@@ -711,19 +715,22 @@ def index():
                                         {% for column in columns %}
                                         <td class="{{ cell_to_class(row[column.name]) }}">
                                             <div>
+
                                                 {% if autoincrementing_primary_key_name and column.name == autoincrementing_primary_key_name %}
-                                                <span style="color: gray">{{ row['id'] }}</span>
+                                                <span style="color: gray">{{ row[autoincrementing_primary_key_name] }}</span>
+
                                                 {% elif cell_to_class(row[column.name]) == 'blob' %}
                                                 {{ row[column.name] }}
+
                                                 {% else %}
-
-                                                <form action="{{ url_for('update_cell', table_name=active_table_name, column_name=column.name, row_id=row['id']) }}" method="post">
-
+                                                <form action="{{ url_for('update_cell', table_name=active_table_name, column_name=column.name, row_id=row['rowid']) }}" method="post">
                                                     <!-- cell_to_input(row[column.name]) -->
                                                     {{ cell_to_input(row[column.name]) | safe }}
                                                     <input type="submit" value="Update" hidden>
                                                 </form>
+
                                                 {% endif %}
+
                                             </div>
                                         {% endfor %}
                                     </tr>
