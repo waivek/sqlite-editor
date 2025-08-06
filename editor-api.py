@@ -7,7 +7,8 @@ from flask import redirect
 from flask import url_for
 from flask_cors import CORS
 from dbutils import Connection
-from waivek import read, write, rel2abs
+from box import Timer
+from box import read, write, rel2abs
 import os
 from datetime import datetime, timezone, timedelta
 import timeago
@@ -15,9 +16,11 @@ import json
 from state import get_state
 from flask import session
 import html
+timer = Timer()
 
 app = Flask(__name__)
 app.config['Access-Control-Allow-Origin'] = '*'
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year cache for static files
 CORS(app)
 
 @app.route('/api/tables/<table_name>/delete', methods=['POST'])
@@ -44,7 +47,8 @@ def select_table(table_name):
     db_path = request.form.get('db_path')
     state = request_to_state(request)
     state.set_active_table(table_name)
-    return redirect(url_for('index'))
+    response = redirect(url_for('index'))
+    return response
 
 @app.route('/api/tables', methods=['POST'])
 def create_table():
@@ -465,6 +469,7 @@ def view_select_column_values(column_name):
 
 @app.route('/', methods=['GET'])
 def index():
+    timer.start("Request")
     if 'id' not in session:
         session['id'] = 1
         return redirect(url_for('index'))
@@ -531,7 +536,9 @@ def index():
 
     # feature_flag = False
     feature_flag = True
-    return render_template_string("""
+    timer.print("Request")
+    timer.start("Render")
+    template_string = render_template_string("""
     <html>
         <head>
             <title>Editor API</title>
@@ -814,24 +821,29 @@ def index():
                     }
                 });
                 content = document.querySelector('.inner-scrollable-content');
-                content.addEventListener('scroll', function (event) {
-                    var thead = document.querySelector('thead');
+                if (content) {
+                    content.addEventListener('scroll', function (event) {
+                        var thead = document.querySelector('thead');
 
-                    // if (thead.getBoundingClientRect().top <= 0) {
-                    // if (content.scrollTop >= 1) {
-                    // check if thead is on top, by comparing to upper edge of `.scrollable-content`
+                        // if (thead.getBoundingClientRect().top <= 0) {
+                        // if (content.scrollTop >= 1) {
+                        // check if thead is on top, by comparing to upper edge of `.scrollable-content`
 
-                    if (thead.getBoundingClientRect().top <= content.getBoundingClientRect().top) {
-                        thead.classList.add('sticky');
-                    } else {
-                        thead.classList.remove('sticky');
-                    }
-                });
+                        if (thead.getBoundingClientRect().top <= content.getBoundingClientRect().top) {
+                            thead.classList.add('sticky');
+                        } else {
+                            thead.classList.remove('sticky');
+                        }
+                    });
+                }
 
 
             </script>
         </body>
     </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_path_objects=db_path_objects, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination, feature_flag=feature_flag, table_config=table_config)
+    timer.print("Render")
+    return template_string
+
 
 import sqlite3
 connection : sqlite3.Connection
@@ -839,6 +851,7 @@ connection : sqlite3.Connection
 def main():
     secret_key = 'secret'
     app.secret_key = secret_key
+    # app.run(host='0.0.0.0', port=3000, debug=True, use_reloader=True)
     app.run(host='0.0.0.0', port=3000, debug=True, use_reloader=True)
 
 if __name__ == "__main__":
