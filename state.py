@@ -25,6 +25,7 @@ class TableConfig:
         self.hidden_column_names = []
         self.sort_column_pairs = []
         self.column_value_filters_dict = {}
+        self.column_text_filters_dict = {}
 
     def update_page(self, page):
         self.page = page
@@ -191,11 +192,26 @@ class State:
         table_config.column_value_filters_dict.pop(column_name, None)
         save_state(self)
 
+
     def set_column_value_filter(self, column_name, values, clause):
         table_config = self.get_active_table_config()
         if not table_config:
             raise Exception("No active table_config")
         table_config.column_value_filters_dict[column_name] = (values, clause)
+        save_state(self)
+
+    def clear_column_text_filter(self, column_name):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        del table_config.column_text_filters_dict[column_name]
+        save_state(self)
+
+    def set_column_text_filter(self, column_name, text_to_match):
+        table_config = self.get_active_table_config()
+        if not table_config:
+            raise Exception("No active table_config")
+        table_config.column_text_filters_dict[column_name] = text_to_match
         save_state(self)
 
     def print_tree(self):
@@ -225,19 +241,14 @@ def save_state(state: State):
         file.write(state_json)
 
 def get_state(state_id) -> State:
-    global DEBUG
     state_save_path = get_state_save_path(state_id)
     if not os.path.exists(state_save_path) or os.path.getsize(state_save_path) == 0:
-        if DEBUG:
-            print(Code.LIGHTRED_EX + "State file not found or empty. Creating new state. (path: {0})".format(state_save_path))
         state = State(state_id)
         save_state(state)
         return state
     with open(state_save_path, "r") as file:
         state_json = file.read()
     state: State = jsonpickle.decode(state_json) # type: ignore
-    if DEBUG:
-        print(Code.LIGHTGREEN_EX + "State loaded successfully. (path: {0})".format(state_save_path))
     return state
 
 def mutate_state(state: State):
@@ -260,3 +271,4 @@ if __name__ == "__main__":
     with handler():
         main()
 
+# run.vim: term ++rows=100 python %

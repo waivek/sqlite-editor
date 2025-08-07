@@ -20,7 +20,7 @@ timer = Timer()
 
 app = Flask(__name__)
 app.config['Access-Control-Allow-Origin'] = '*'
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000  # 1 year cache for static files
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 CORS(app)
 
 @app.route('/api/tables/<table_name>/delete', methods=['POST'])
@@ -108,7 +108,6 @@ def get_textarea_html(value):
         <textarea name="value" value="{0}">{0}</textarea>
     '''.format(value)
 
-
 def cell_to_class(value):
     if value is None:
         return 'null'
@@ -153,9 +152,6 @@ def paginate(select_clause, table_name, where_clause, order_by_clause, page_numb
                   "total": row_count
                   }
     return rows, pagination
-
-
-
 
 def cell_to_input(value):
     if value is None:
@@ -227,7 +223,6 @@ def parse_date_iso(string):
         string = string[:-1]
     return datetime.fromisoformat(string)
 
-
 def is_date_iso(string):
     try:
         parse_date_iso(string)
@@ -248,6 +243,11 @@ def is_date_epoch(string):
     except ValueError:
         return False
 
+@app.route('/refresh_db_paths', methods=['POST'])
+def refresh_db_paths():
+    from getdbpaths import update_db_paths_text_file
+    update_db_paths_text_file(force=True)
+    return redirect(url_for('index'))
 
 def get_db_paths():
     from getdbpaths import update_db_paths_text_file
@@ -379,6 +379,19 @@ def view_batch_select_column_names():
     </html>
     """, state=state, columns=columns, table_name=table_name, hidden_column_names=hidden_column_names)
 
+@app.route('/api/tables/<table_name>/columns/<column_name>/text_filter_clear', methods=['POST'])
+def clear_column_text_filter(table_name, column_name):
+    state = request_to_state(request)
+    state.clear_column_text_filter(column_name)
+    return redirect(url_for('index'))
+
+@app.route('/api/tables/<table_name>/columns/<column_name>/text_filter', methods=['POST'])
+def update_column_text_filter(table_name, column_name):
+    string = request.form.get('text-filter')
+    state = request_to_state(request)
+    state.set_column_text_filter(column_name, string)
+    return redirect(url_for('index'))
+
 @app.route('/api/tables/<table_name>/columns/<column_name>/value_filter', methods=['POST'])
 def update_column_value_filter(table_name, column_name):
 
@@ -466,10 +479,8 @@ def view_select_column_values(column_name):
     </html>
     """, state=state, rows=rows, column_name=column_name, table_name=table_name, selected_values=selected_values)
 
-
 @app.route('/', methods=['GET'])
 def index():
-    timer.start("Request")
     if 'id' not in session:
         session['id'] = 1
         return redirect(url_for('index'))
@@ -495,8 +506,6 @@ def index():
     # put empty db_path_object with size 0 at the end
     db_path_objects = sorted(db_path_objects, key=lambda db_path_object: db_path_object['size'] == 0)
 
-
-    
     tables = []
     columns = []
     rows = []
@@ -525,19 +534,20 @@ def index():
             order_by_clause = "ORDER BY " + ", ".join([ f"[{column_name}] {sort_type}" for column_name, sort_type in sort_column_pairs ])
 
         where_clause = ""
-        if table_config.column_value_filters_dict:
+        if table_config.column_value_filters_dict or table_config.column_text_filters_dict:
             where_clauses = []
             for column_name, (values, clause) in table_config.column_value_filters_dict.items():
                 values_string = ", ".join([ f"'{value}'" for value in values ])
                 where_clauses.append(f"[{column_name}] {clause} ({values_string})")
+            for column_name, string in table_config.column_text_filters_dict.items():
+                where_clauses.append(f"[{column_name}] LIKE '%{string}%'")
             where_clause = "WHERE " + " AND ".join(where_clauses)
+ 
 
         rows, pagination = paginate("SELECT *", table_name, where_clause, order_by_clause, table_config.page, table_config.page_size)
 
     # feature_flag = False
     feature_flag = True
-    timer.print("Request")
-    timer.start("Render")
     template_string = render_template_string("""
     <html>
         <head>
@@ -547,7 +557,7 @@ def index():
             <link rel="stylesheet" href="{{ url_for('static', filename='ui-components-css/css-utilities/wide-tall.css') }}"> 
             <link rel="stylesheet" href="{{ url_for('static', filename='ui-components-css/css-themes/dark-gray-mono.css') }}"> 
 
-            <link rel="stylesheet" href="{{ url_for('static', filename='css/editor-2.css') }}"> 
+            <link rel="stylesheet" href="{{ url_for('static', filename='css/editor-2.css') }}">
 
             {% else %}
             <link rel="stylesheet" href="{{ url_for('static', filename='css/base-dark.css') }}">  
@@ -581,7 +591,6 @@ def index():
                         <div class="inner-scrollable-content tall">
                 {% endif %}
 
-                    
                             <div class="wide flex-wrap justify-between">
                                 {% if active_table_name %}
                                 <form action="{{ url_for('add_column', table_name=active_table_name) }}" method="post">
@@ -596,18 +605,23 @@ def index():
                                     <input type="submit" value="Add column">
                                 </form>
                                 {% endif %}
-                                <form action="{{ url_for('load_db') }}" method="post" class="wide flex-wrap">
-                                    <select name="db_path" size="1">
-                                        {% for db_path_object in db_path_objects %}
-                                        {% if db_path_object.path == active_db_path %}
-                                        <option value="{{ db_path_object.path }}" selected>{{ db_path_object.human }}</option>
-                                        {% else %}
-                                        <option class="{{ 'gray' if db_path_object.size == 0 else '' }}" value="{{ db_path_object.path }}">{{ db_path_object.human }}</option>
-                                        {% endif %}
-                                        {% endfor %}
-                                    </select>
-                                    <input type="submit" value="Load DB">
-                                </form>
+                                <div class="wide flex-wrap">
+                                    <form action="{{ url_for('load_db') }}" method="post" class="wide flex-wrap">
+                                        <select name="db_path" size="1">
+                                            {% for db_path_object in db_path_objects %}
+                                            {% if db_path_object.path == active_db_path %}
+                                            <option value="{{ db_path_object.path }}" selected>{{ db_path_object.human }}</option>
+                                            {% else %}
+                                            <option class="{{ 'gray' if db_path_object.size == 0 else '' }}" value="{{ db_path_object.path }}">{{ db_path_object.human }}</option>
+                                            {% endif %}
+                                            {% endfor %}
+                                        </select>
+                                        <input type="submit" value="Load DB">
+                                    </form>
+                                    <form action="{{ url_for('refresh_db_paths') }}" method="post">
+                                        <input type="submit" value="Refresh DB paths">
+                                    </form>
+                                </div>
                             </div>
                             {% if active_table_name %}
                             <!-- pagination -->
@@ -653,9 +667,6 @@ def index():
                             </div>
                             {% endif %}
 
-
-
-
                             {% if active_db_path and active_table_name %}
                             <table>
                                 <thead>
@@ -670,6 +681,20 @@ def index():
                                                     <a href="{{ url_for('view_select_column_values', column_name=column.name) }}">{{ column.name }}</a>
                                                     {% endif %}
                                                     <span>({{ column.type }})</span>
+                                                </div>
+                                                <div class="wide">
+                                                    <form action="{{ url_for('update_column_text_filter', table_name=active_table_name, column_name=column.name) }}" method="POST">
+                                                        <input type="text" placeholder="Filter" name="text-filter" 
+                                                        {% if column.name in table_config.column_text_filters_dict %}
+                                                            value="{{ table_config.column_text_filters_dict[column.name] }}"
+                                                        {% endif %}
+                                                        required>
+                                                    </form>
+                                                    {% if column.name in table_config.column_text_filters_dict %}
+                                                        <form action="{{ url_for('clear_column_text_filter', table_name=active_table_name, column_name=column.name) }}" method="POST">
+                                                            <input type="submit" value="Clear">
+                                                        </form>
+                                                    {% endif %}
                                                 </div>
                                                 <div class="wide center-h thead-controls">
                                                     <span>
@@ -810,7 +835,6 @@ def index():
                     }
                 });
 
-
                 // when the stickied thead is on top after a scroll-vertical, add a class: "sticky"
                 document.addEventListener('scroll', function (event) {
                     var thead = document.querySelector('thead');
@@ -837,13 +861,10 @@ def index():
                     });
                 }
 
-
             </script>
         </body>
     </html>""", tables=tables, state=state, columns=columns, rows=rows, cell_to_input=cell_to_input, cell_to_class=cell_to_class, db_path_objects=db_path_objects, json=json, active_db_path=state.active_db_path, active_table_name=table_name, autoincrementing_primary_key_name=autoincrementing_primary_key_name, pagination=pagination, feature_flag=feature_flag, table_config=table_config)
-    timer.print("Render")
     return template_string
-
 
 import sqlite3
 connection : sqlite3.Connection

@@ -53,11 +53,11 @@ def all_paths_present_in_db_paths_text_file():
             return False
     return True
 
-def update_db_paths_text_file():
+def update_db_paths_text_file(force=False):
     output_path = rel2abs("data/db_paths.txt")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     # if modified in the last hour, don't update
-    if os.path.exists(output_path) and all_paths_present_in_db_paths_text_file():
+    if not force and os.path.exists(output_path) and all_paths_present_in_db_paths_text_file():
         last_modified = os.path.getmtime(output_path)
         if time.time() - last_modified < 3600:
             return output_path

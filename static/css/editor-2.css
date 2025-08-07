@@ -13,6 +13,12 @@
 }
 /* }}} SCROLLABLE EDITOR */
 
+:root {
+    --input-button-padding: 8px;
+    --max-width: 300px;
+}
+    
+
 th {
     font-weight: normal;
     color: #aaa;
@@ -26,10 +32,53 @@ input[type="submit"].active-footer-input {
     background: var(--bg-container);
 }
 
-tr input {
-    field-sizing: content;
+
+tr:last-child > td {
+    padding: 4px;
 }
 
+td {
+    padding: 0;
+    max-width: var(--max-width);
+
+}
+table { height: 1px; }
+td > div:has(input[type="text"]) {
+    /* we want to expand inputs, but we don’t use simple td > div { */
+    /* if we do that, then rows w/o <input type="text"> will have height of 1px acc above rule */
+    height: 100%;
+}
+
+table td input[type="text"] {
+    all: unset;
+    box-sizing: border-box;
+    display: table-cell;
+    padding: 4px;
+
+    width: -webkit-fill-available;
+    height: 100%;
+
+    border: solid 2px transparent;
+    field-sizing: content;
+    &:focus {
+        border-color: var(--border-color);
+    }
+}
+
+textarea {
+    all: unset;
+    field-sizing: content;
+
+    border: solid 2px transparent;
+    &:focus {
+        border-color: var(--border-color);
+    }
+}
+
+td a {
+    line-break: anywhere;
+    &:hover { text-decoration: underline; }
+}
 
 /* SCROLLBAR {{{ */
 ::-webkit-scrollbar {
